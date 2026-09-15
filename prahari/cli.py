@@ -1,8 +1,9 @@
 """Command line entry point.
 
-    python -m prahari.cli replay      # run a capture through the engine
-    python -m prahari.cli selftest    # prove the read-only properties
-    python -m prahari.cli bench       # measure sustained throughput
+    python -m prahari.cli live --pcap demo.pcap   # run real captured traffic
+    python -m prahari.cli replay                  # run a synthetic capture
+    python -m prahari.cli selftest                # prove the read-only properties
+    python -m prahari.cli bench                   # measure sustained throughput
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ import argparse
 import json
 import sys
 import time
+from pathlib import Path
 
 from .engine import Engine
 from .generate import ALL_ATTACKS, TrafficGenerator
@@ -46,6 +48,67 @@ def cmd_replay(args) -> int:
 
     incidents = engine.fusion.ranked_incidents()
     multi = [i for i in incidents if len(i.classes) > 1]
+    if multi:
+        print(f"\nCORRELATED INCIDENTS ({len(multi)} host(s) showing more than one stage)")
+        for inc in multi[:5]:
+            print(f"  {inc.entity:>15}  severity={inc.severity:<8} score={inc.score:.2f}  "
+                  f"chain: {' → '.join(inc.classes)}")
+    if ledger:
+        ok, n, bad = ledger.verify()
+        print(f"\nLEDGER  {n} alerts, hash chain {'VERIFIED' if ok else f'BROKEN at {bad}'}")
+    return 0
+
+
+def cmd_live(args) -> int:
+    """Run a real capture file through the same pipeline as everything else.
+
+    Nothing downstream of the reader knows or cares that these flows came off a
+    wire rather than out of the generator, which is the whole point: the
+    detectors were never tuned against packet bytes, so this is a genuine test
+    of them and not a replay of their own training data.
+    """
+    from .pcapread import flows_from_capture
+
+    path = Path(args.pcap)
+    if not path.exists():
+        print(f"no such capture: {path}", file=sys.stderr)
+        print("make one with:  sudo tcpdump -i any -s 512 -w demo.pcap", file=sys.stderr)
+        print("or generate one: python3 scripts/make_pcap.py --out data/demo.pcap",
+              file=sys.stderr)
+        return 2
+
+    t0 = time.time()
+    print(f"reading {path} ({path.stat().st_size / 1e6:.1f} MB) ...")
+    flows = flows_from_capture(path, verbose=True)
+    if not flows:
+        print("no IPv4 TCP/UDP flows in that capture — nothing to analyse.")
+        return 1
+    span = flows[-1].ts - flows[0].ts
+    print(f"  {span / 60:.1f} minutes of traffic, "
+          f"{len({f.src_ip for f in flows})} source hosts, "
+          f"parsed in {time.time() - t0:.1f}s")
+    print("-" * 118)
+
+    ledger = AlertLedger(args.ledger) if args.ledger else None
+    alerts: list = []
+
+    def emit(a):
+        alerts.append(a)
+        print(_fmt_alert(a))
+
+    engine = Engine(window=args.window, ledger=ledger, on_alert=emit)
+    engine.run(flows)
+
+    print("-" * 118)
+    if not alerts:
+        print("NO ALERTS — nothing in this capture crossed a detector threshold.")
+        print("On genuinely clean traffic that is the correct answer, and it is "
+              "the result we most want you to see: a detector that alerts on "
+              "everything is not a detector.")
+    stats = engine.stats.summary()
+    print("ENGINE  " + "  ".join(f"{k}={v}" for k, v in stats.items()))
+
+    multi = [i for i in engine.fusion.ranked_incidents() if len(i.classes) > 1]
     if multi:
         print(f"\nCORRELATED INCIDENTS ({len(multi)} host(s) showing more than one stage)")
         for inc in multi[:5]:
@@ -95,6 +158,12 @@ def main(argv=None) -> int:
     r.add_argument("--window", type=float, default=60.0)
     r.add_argument("--ledger", default="data/alerts.jsonl")
     r.set_defaults(func=cmd_replay)
+
+    lv = sub.add_parser("live", help="analyse a real .pcap / .pcapng capture")
+    lv.add_argument("--pcap", required=True, help="capture file to analyse")
+    lv.add_argument("--window", type=float, default=60.0)
+    lv.add_argument("--ledger", default="data/alerts.jsonl")
+    lv.set_defaults(func=cmd_live)
 
     s = sub.add_parser("selftest", help="prove the read-only constraints")
     s.set_defaults(func=cmd_selftest)

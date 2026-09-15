@@ -20,7 +20,10 @@ PKG = Path(__file__).resolve().parent
 FORBIDDEN = {"socket", "requests", "urllib", "urllib3", "http.client",
              "httpx", "ftplib", "smtplib", "telnetlib", "paramiko", "scapy"}
 DETECTION_PATH = ["engine.py", "features.py", "model.py", "fusion.py", "schema.py",
-                  "ledger.py", "detectors"]
+                  "ledger.py", "pcapread.py", "detectors"]
+# pcapread.py is in this list deliberately. It is the module that touches real
+# traffic, so it is the one where a socket would be least surprising and most
+# damaging — it opens a file and nothing else, and this asserts that.
 
 
 def _imports(path: Path) -> set[str]:

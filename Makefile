@@ -1,12 +1,18 @@
-.PHONY: demo selftest replay dash test eval sweep train bench clean
+.PHONY: demo selftest replay live pcap dash test eval sweep train bench clean
 
-demo: selftest test replay eval sweep   ## everything a judge needs to see
+demo: selftest test replay live eval sweep   ## everything a judge needs to see
 
 selftest:
 	@python3 -m prahari.cli selftest
 
 replay:
 	@python3 -m prahari.cli replay
+
+pcap:   ## write a genuine wire-format capture to data/demo.pcap
+	@python3 scripts/make_pcap.py --out data/demo.pcap --duration 1800
+
+live: pcap   ## run the pipeline on real packet bytes
+	@python3 -m prahari.cli live --pcap data/demo.pcap
 
 dash:
 	@python3 -m prahari.api --port 8000
@@ -27,4 +33,4 @@ bench:
 	@python3 -m prahari.cli bench
 
 clean:
-	@rm -rf data/alerts.jsonl **/__pycache__ prahari/__pycache__ prahari/detectors/__pycache__
+	@rm -rf data/alerts.jsonl data/demo.pcap **/__pycache__ prahari/__pycache__ prahari/detectors/__pycache__

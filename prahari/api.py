@@ -6,6 +6,7 @@ bind a socket, which is exactly why it is a separate process serving a read-only
 view of the alert ledger rather than part of the pipeline.
 
     python -m prahari.api --port 8000
+    python -m prahari.api --pcap data/demo.pcap     # replay a real capture
 """
 from __future__ import annotations
 
@@ -23,15 +24,32 @@ from .ledger import AlertLedger
 ROOT = Path(__file__).resolve().parents[1]
 DASH = ROOT / "dashboard" / "index.html"
 
-STATE: dict = {"alerts": [], "stats": {}, "incidents": [], "running": False}
+STATE: dict = {"alerts": [], "stats": {}, "incidents": [], "running": False,
+               "source": "synthetic capture"}
+PCAP: Path | None = None            # set by --pcap; replaces the generator
 LOCK = threading.Lock()
 
 
 def replay_worker(duration: int, jitter: float, seed: int, speed: float) -> None:
-    """Replay a capture in wall-clock-scaled time so the dashboard animates."""
+    """Replay a capture in wall-clock-scaled time so the dashboard animates.
+
+    The flow source is either the generator or a real capture file. Everything
+    after this line is identical in both cases — the dashboard cannot tell them
+    apart, because nothing downstream of the reader can.
+    """
+    source = f"real capture — {PCAP.name}" if PCAP else "synthetic capture"
     with LOCK:
-        STATE.update(alerts=[], stats={}, incidents=[], running=True)
-    flows = TrafficGenerator(seed=seed, jitter=jitter).capture(duration, classes=ALL_ATTACKS)
+        STATE.update(alerts=[], stats={}, incidents=[], running=True, source=source)
+    if PCAP:
+        from .pcapread import flows_from_capture
+        flows = flows_from_capture(PCAP)
+    else:
+        flows = TrafficGenerator(seed=seed, jitter=jitter).capture(
+            duration, classes=ALL_ATTACKS)
+    if not flows:
+        with LOCK:
+            STATE["running"] = False
+        return
     ledger = AlertLedger(ROOT / "data" / "alerts.jsonl")
 
     def on_alert(a):
@@ -94,16 +112,25 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
+    global PCAP
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--pcap", help="replay this .pcap/.pcapng instead of the generator")
     ap.add_argument("--no-autostart", action="store_true")
     args = ap.parse_args()
+    if args.pcap:
+        PCAP = Path(args.pcap)
+        if not PCAP.exists():
+            print(f"no such capture: {PCAP}")
+            return 2
+        STATE["source"] = f"real capture — {PCAP.name}"
     if not args.no_autostart:
         threading.Thread(target=replay_worker, args=(1800, 0.20, 1337, 120.0),
                          daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     print(f"PRAHARI dashboard on http://localhost:{args.port}")
-    print("replaying a capture; alerts will appear as the engine raises them")
+    print(f"source: {STATE['source']}")
+    print("replaying; alerts will appear as the engine raises them")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

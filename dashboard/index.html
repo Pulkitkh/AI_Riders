@@ -60,6 +60,7 @@
   <span class="dot" id="dot"></span>
   <h1>PRAHARI</h1>
   <span class="tag">read-only ingest &middot; no return path &middot; no payload decryption</span>
+  <span class="tag" id="source">&mdash;</span>
   <span class="grow"></span>
   <button onclick="replay()">↻ replay capture</button>
   <button onclick="verify()">verify hash chain</button>
@@ -118,6 +119,10 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','
 function render(s){
   document.getElementById("dot").style.background =
     s.running ? "var(--ok)" : "var(--muted)";
+  const src = document.getElementById("source");
+  src.textContent = s.source ?? "—";
+  // a real capture is the claim worth making loudly, so mark it
+  src.style.color = (s.source||"").startsWith("real") ? "#8ef2b0" : "";
   document.getElementById("stats").innerHTML = STATKEYS.map(([k,l])=>
     `<div class="stat"><b>${s.stats[k]??"—"}</b><span>${l}</span></div>`).join("");
 

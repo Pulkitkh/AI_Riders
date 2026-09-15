@@ -15,6 +15,27 @@ no active probing, and no payload decryption**.
 
 ---
 
+## Run it on real captured traffic
+
+```bash
+sudo tcpdump -i any -s 512 -w demo.pcap        # or use any .pcap you already have
+python3 -m prahari.cli live --pcap demo.pcap
+```
+
+No capture handy, and no root on the machine in front of you? Build one:
+
+```bash
+make live                                      # writes data/demo.pcap, then analyses it
+python3 -m prahari.api --pcap data/demo.pcap   # the same capture, in the dashboard
+```
+
+`scripts/make_pcap.py` writes real frames — real Ethernet/IPv4/TCP headers, real
+DNS wire encoding, a real TLS ClientHello, a real DER certificate — so Wireshark
+opens the file and the reader is tested against bytes it did not itself produce.
+The *contents* are generated; the format and the parsing are not.
+
+---
+
 ## Run it in thirty seconds
 
 No dependencies. Pure Python 3.11 standard library.
@@ -52,7 +73,8 @@ Everything below runs. Nothing here is a mock, a stub, or a screenshot.
 | Live dashboard | working |
 | Read-only self-test | working |
 | Held-out evaluation + jitter sweep | working |
-| **Live PCAP / Zeek ingest** | **not yet — see Honest limits** |
+| PCAP / PCAPNG reader — real packets to the same `Flow` record | working |
+| Real JA3 fingerprint + X.509 parsing from the handshake | working |
 
 ---
 
@@ -178,11 +200,15 @@ CORRELATED INCIDENTS
 
 A prototype that oversells itself loses the viva. These are the gaps.
 
-1. **Traffic is synthetic.** The generator produces realistic *shapes* — and
-   deliberately includes the hard negatives (monitoring agents that beacon,
-   backup windows that invert byte ratios, asset scanners that fan out) — but it
-   is not real capture. The next milestone is a `zeek`/`nfstream` reader feeding
-   the same `Flow` record, which is a change to one module.
+1. **We can read real packets; we have not yet run on real operational
+   traffic.** `prahari/pcapread.py` parses actual pcap/pcapng — Ethernet, Linux
+   cooked SLL/SLL2, raw IP, VLAN unwrapping, IPv4/TCP/UDP, DNS question
+   parsing, TLS ClientHello with a JA3 computed from the bytes, and X.509
+   issuer/subject/validity from the Certificate message — and produces the same
+   `Flow` record the generator does, so the whole pipeline runs on it unchanged.
+   What we have not done is point it at a live NTRO-scale link. The *content* of
+   our captures is still generated, so the traffic shapes are ours; only the
+   wire format and the parsing of it are real.
 
 2. **Six of seven classes score 1.000. That will not survive real traffic.**
    Synthetic DGA names are random strings and so are cleanly separable;
@@ -190,9 +216,14 @@ A prototype that oversells itself loses the viva. These are the gaps.
    the lexical features entirely. Treat these numbers as "the pipeline is
    wired correctly end to end", not as a claim about field performance.
 
-3. **No real JA4 computation.** Fingerprints are carried as opaque strings from
-   the generator. Computing a real JA4 needs a TLS ClientHello parser, which
-   arrives with the PCAP reader.
+3. **JA3, not JA4, and TLS 1.3 hides the certificate.** The reader computes a
+   real JA3 — the older, widely-tabulated fingerprint — from the ClientHello;
+   JA4+ is a substitution of the same parsed fields and is not done yet.
+   Certificate facts (self-signed, validity window) are readable only through
+   TLS 1.2, because TLS 1.3 encrypts the Certificate message. On a 1.3-only
+   link the encrypted-malware detector falls back to fingerprint rarity and
+   packet shape, which is weaker, and Encrypted Client Hello removes SNI
+   visibility as it rolls out.
 
 4. **Exfiltration is genuinely weak** and is reported as such — it is positioned
    as a ranked lead for analyst review, not an oracle, and its score is capped
@@ -233,13 +264,16 @@ prahari/
   fusion.py        dedupe, correlate into incidents, severity
   ledger.py        SHA-256 hash-chained append-only alert store
   selftest.py      read-only constraint proof
+  pcapread.py      pcap/pcapng -> Flow: real packet parsing, no scapy, no dpkt
   api.py           dashboard server (outside the detection path, on purpose)
-  cli.py           replay / selftest / bench
+  cli.py           live / replay / selftest / bench
   detectors/       one module per threat family
 dashboard/         live SOC view
 eval/              held-out evaluation + jitter sweep
-scripts/train.py   fits both models and the bigram table
-tests/             12 tests
+scripts/train.py      fits both models and the bigram table
+scripts/make_pcap.py  writes a genuine wire-format .pcap (round-trip test + demo)
+docs/DEMO.md       the runbook for presenting this
+tests/             18 tests
 ```
 
 ---
