@@ -1,0 +1,40 @@
+{
+  "features": [
+    "length",
+    "entropy",
+    "vowel_ratio",
+    "digit_ratio",
+    "consonant_run",
+    "bigram_ll",
+    "n_labels"
+  ],
+  "w": {
+    "length": 0.04023931503843972,
+    "entropy": 0.6378337993755344,
+    "vowel_ratio": -0.19132354868255752,
+    "digit_ratio": 0.09881802441118885,
+    "consonant_run": 0.1743978405355118,
+    "bigram_ll": -1.7697272281222511,
+    "n_labels": -2.359229524106567
+  },
+  "b": -5.126466422681421,
+  "mu": {
+    "length": 8.072830261136712,
+    "entropy": 2.418221245473063,
+    "vowel_ratio": 0.34475184305495493,
+    "digit_ratio": 0.10348268241124303,
+    "consonant_run": 2.072830261136713,
+    "bigram_ll": -6.713634912047999,
+    "n_labels": 3.1210445468509986
+  },
+  "sigma": {
+    "length": 7.836993997041387,
+    "entropy": 0.702111529476918,
+    "vowel_ratio": 0.14906625527657985,
+    "digit_ratio": 0.10656512805156865,
+    "consonant_run": 1.3584137883936158,
+    "bigram_ll": 1.8621731005895596,
+    "n_labels": 0.6301033155791451
+  },
+  "threshold": 0.13
+}

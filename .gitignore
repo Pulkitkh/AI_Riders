@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+data/*
+!data/.gitkeep
+*.pdf
+.DS_Store
+.venv/

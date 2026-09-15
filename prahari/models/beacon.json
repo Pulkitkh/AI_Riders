@@ -1,0 +1,44 @@
+{
+  "features": [
+    "regularity",
+    "jitter_band",
+    "interval_cv",
+    "mad_ratio",
+    "byte_cv",
+    "n_events",
+    "dst_prevalence",
+    "dst_external"
+  ],
+  "w": {
+    "regularity": 0.49959972316453305,
+    "jitter_band": 0.48444961453764923,
+    "interval_cv": -0.02869331452310571,
+    "mad_ratio": 0.05948030972089304,
+    "byte_cv": -1.154786609913517,
+    "n_events": 0.25077653215976753,
+    "dst_prevalence": -1.5179169119701088,
+    "dst_external": 2.7048771083593
+  },
+  "b": -5.731271134595389,
+  "mu": {
+    "regularity": 0.5589713003349551,
+    "jitter_band": 0.020370352741216343,
+    "interval_cv": 0.8532134725270099,
+    "mad_ratio": 0.5390967840900804,
+    "byte_cv": 0.32398902611734837,
+    "n_events": 8.571170084439084,
+    "dst_prevalence": 69.19119420989144,
+    "dst_external": 0.6357056694813028
+  },
+  "sigma": {
+    "regularity": 0.11758652662932495,
+    "jitter_band": 0.09777756114969091,
+    "interval_cv": 0.3222666555470365,
+    "mad_ratio": 0.24374438846146104,
+    "byte_cv": 0.264832295259005,
+    "n_events": 5.349453499950851,
+    "dst_prevalence": 53.1878959196481,
+    "dst_external": 0.4813043015482205
+  },
+  "threshold": 0.63
+}
