@@ -25,9 +25,21 @@ python3 -m prahari.cli live --pcap demo.pcap
 No capture handy, and no root on the machine in front of you? Build one:
 
 ```bash
-make live                                      # writes data/demo.pcap, then analyses it
+python3 scripts/make_pcap.py --out data/demo.pcap --duration 1800
+python3 -m prahari.cli live --pcap data/demo.pcap
 python3 -m prahari.api --pcap data/demo.pcap   # the same capture, in the dashboard
 ```
+
+**On Windows**, use `python` (or `py -3`) instead of `python3`, and skip `make`
+entirely — it is not installed on a stock Windows box:
+
+```powershell
+python scripts\demo.py            # everything: tests, capture, analysis, eval
+python scripts\demo.py --quick    # the same, minus the slow evaluation passes
+```
+
+`scripts/demo.py` is the cross-platform equivalent of `make demo` and invokes
+whichever interpreter is running it, so it cannot pick the wrong Python.
 
 `scripts/make_pcap.py` writes real frames — real Ethernet/IPv4/TCP headers, real
 DNS wire encoding, a real TLS ClientHello, a real DER certificate — so Wireshark
@@ -272,6 +284,7 @@ dashboard/         live SOC view
 eval/              held-out evaluation + jitter sweep
 scripts/train.py      fits both models and the bigram table
 scripts/make_pcap.py  writes a genuine wire-format .pcap (round-trip test + demo)
+scripts/demo.py       cross-platform `make demo`, for machines without make
 docs/DEMO.md       the runbook for presenting this
 tests/             18 tests
 ```

@@ -116,9 +116,9 @@ def main() -> int:
               "inverts its byte ratio. An operator allowlists it on day one, "
               "which is why Fusion takes a suppression set.")
 
-    Path("eval/results.json").write_text(json.dumps(
+    (Path("eval") / "results.json").write_text(json.dumps(
         {"per_class": {c: dict(agg[c]) for c in ALL_ATTACKS},
-         "alerts": total_alerts, "simulated_hours": hours}, indent=2))
+         "alerts": total_alerts, "simulated_hours": hours}, indent=2), encoding="utf-8")
     print("\nwrote eval/results.json")
     return 0
 

@@ -124,7 +124,7 @@ def main() -> int:
     # -- bigram language model ------------------------------------------------
     print("\nfitting bigram language model on benign domains ...")
     bigrams = build_bigrams(train_flows)
-    (MODEL_DIR / "bigrams.json").write_text(json.dumps(bigrams))
+    (MODEL_DIR / "bigrams.json").write_text(json.dumps(bigrams), encoding="utf-8")
     print(f"  wrote {len(bigrams)} bigram log-probabilities")
 
     metrics = {}
@@ -152,7 +152,8 @@ def main() -> int:
     metrics["beacon_held_out"] = report(bea, Xh, yh, "beacon HELD-OUT captures")
     bea.save("beacon")
 
-    (MODEL_DIR / "training_report.json").write_text(json.dumps(metrics, indent=2))
+    (MODEL_DIR / "training_report.json").write_text(
+        json.dumps(metrics, indent=2), encoding="utf-8")
     print("\n" + "=" * 62)
     print(f"models written to {MODEL_DIR}")
     print("learned weights (standardised features):")

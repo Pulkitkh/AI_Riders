@@ -52,8 +52,8 @@ def main() -> int:
         print(f"  jitter {j:>4.0%}   recall {rec:>5.2f}  {bar:<40} {found}/{total}")
     print("=" * 66)
 
-    out = Path("eval/jitter_sweep.csv")
-    with out.open("w", newline="") as fh:
+    out = Path("eval") / "jitter_sweep.csv"
+    with out.open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=["jitter", "recall", "detected", "beacons"])
         w.writeheader()
         w.writerows(rows)

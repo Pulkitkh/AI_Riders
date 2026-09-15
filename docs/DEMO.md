@@ -14,17 +14,27 @@ you can be interrupted with a hard question and answer it by running something.
 ```bash
 git clone <repo> && cd AI_Riders
 python3 --version          # 3.10+; there are no other dependencies
-make demo                  # selftest, tests, replay, live pcap, eval, jitter sweep
+python3 scripts/demo.py    # tests, capture, live analysis, selftest, eval, sweep
 ```
 
-`make demo` takes about three minutes and must end with everything green. If it
-does not, fix it before the event — never debug in front of a judge.
+On **Windows PowerShell** it is the same file, with `python` in place of
+`python3` and no `make` anywhere:
 
-Then build and **keep** the capture file, because generating it takes ~40s:
-
-```bash
-make pcap                  # writes data/demo.pcap (~140 MB, 30 min of traffic)
+```powershell
+python --version
+python scripts\demo.py
 ```
+
+`scripts/demo.py` takes about 80 seconds from cold and must end with
+**all green**. If it does not, fix it before the event — never debug in front of
+a judge. It builds `data/demo.pcap` on the way and reuses it if it is already
+there, so run it once and the file stays.
+
+> The step order matters and is deliberate: the capture is analysed *before* the
+> self-test runs, so the alert ledger has records in it by the time the hash
+> chain is verified. Run `selftest` on a fresh clone and it will correctly tell
+> you the ledger is empty and there is nothing to verify — an empty chain
+> verifies trivially and proves nothing, so we refuse to print it as a pass.
 
 Copy the whole repo plus `data/demo.pcap` to a USB stick. Assume no internet,
 no `pip`, no root on the machine you are given. The project has zero
@@ -39,6 +49,7 @@ Four terminal windows, opened in advance, commands typed but not run.
 ### Window 1 — the constraint, proved (30 seconds)
 
 ```bash
+python3 -m prahari.cli replay --duration 300   # gives the ledger something to verify
 python3 -m prahari.cli selftest
 ```
 
@@ -226,9 +237,13 @@ pushes on a claim, you reach for a terminal instead of a slide.
 
 | Symptom | Do this |
 |---|---|
-| `make pcap` is slow | It takes ~40s and writes 140 MB. Build it beforehand. |
-| `data/demo.pcap` missing on the demo machine | `make pcap` rebuilds it, deterministically — same seed, same file. |
+| Building the capture is slow | ~25s, and it writes 140 MB. Build it beforehand and keep the file. |
+| `data/demo.pcap` missing on the demo machine | `python3 scripts/make_pcap.py --out data/demo.pcap --duration 1800` rebuilds it deterministically — same seed, same bytes. |
 | Dashboard port in use | `python3 -m prahari.api --pcap data/demo.pcap --port 8111` |
 | No colour in the terminal | Harmless; it is ANSI escapes. |
 | `python3` is 3.8 | The code uses `X | Y` type syntax under `from __future__ import annotations`; 3.10+ is required. Carry a 3.11 machine. |
-| Laptop dies | The repo is the demo. Any machine with Python 3.10 runs `make demo` from a clean clone. |
+| `make: command not found` (Windows) | Use `python scripts\demo.py`. `make` is a convenience, never a requirement. |
+| `python3` not found (Windows) | Use `python`, or `py -3`. |
+| Escape codes like `[1;31m` printed literally | An old console without VT processing. Set `NO_COLOR=1` and the output goes plain. |
+| selftest says the ledger is empty | Correct on a fresh clone. Run `replay` or `live` first — see §0. |
+| Laptop dies | The repo is the demo. Any machine with Python 3.10 runs `python3 scripts/demo.py` from a clean clone, Windows included. |

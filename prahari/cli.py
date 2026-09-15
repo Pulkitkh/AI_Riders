@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -18,9 +19,33 @@ from .generate import ALL_ATTACKS, TrafficGenerator
 from .ledger import AlertLedger
 from .schema import SEVERITY_BY_CLASS
 
+def _enable_colour() -> bool:
+    """Colour if the terminal will render it, plain text otherwise.
+
+    Windows consoles need VT processing turned on explicitly; without this the
+    demo prints raw escape codes across the screen, which is a bad thing to
+    discover in front of a judge. Honours NO_COLOR and a redirected stdout.
+    """
+    if os.environ.get("NO_COLOR") or not sys.stdout.isatty():
+        return False
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            k = ctypes.windll.kernel32
+            h = k.GetStdHandle(-11)
+            mode = ctypes.c_ulong()
+            if not k.GetConsoleMode(h, ctypes.byref(mode)):
+                return False
+            k.SetConsoleMode(h, mode.value | 0x0004)   # VIRTUAL_TERMINAL_PROCESSING
+        except Exception:
+            return False
+    return True
+
+
+COLOUR = _enable_colour()
 SEV_COLOUR = {"critical": "\033[1;97;41m", "high": "\033[1;31m",
-              "medium": "\033[1;33m", "low": "\033[1;36m"}
-RESET = "\033[0m"
+              "medium": "\033[1;33m", "low": "\033[1;36m"} if COLOUR else {}
+RESET = "\033[0m" if COLOUR else ""
 
 
 def _fmt_alert(a) -> str:
@@ -73,8 +98,8 @@ def cmd_live(args) -> int:
     if not path.exists():
         print(f"no such capture: {path}", file=sys.stderr)
         print("make one with:  sudo tcpdump -i any -s 512 -w demo.pcap", file=sys.stderr)
-        print("or generate one: python3 scripts/make_pcap.py --out data/demo.pcap",
-              file=sys.stderr)
+        print(f"or generate one: {sys.executable} scripts/make_pcap.py "
+              f"--out {Path('data') / 'demo.pcap'}", file=sys.stderr)
         return 2
 
     t0 = time.time()
@@ -156,13 +181,13 @@ def main(argv=None) -> int:
     r.add_argument("--seed", type=int, default=1337)
     r.add_argument("--jitter", type=float, default=0.20)
     r.add_argument("--window", type=float, default=60.0)
-    r.add_argument("--ledger", default="data/alerts.jsonl")
+    r.add_argument("--ledger", default=str(Path("data") / "alerts.jsonl"))
     r.set_defaults(func=cmd_replay)
 
     lv = sub.add_parser("live", help="analyse a real .pcap / .pcapng capture")
     lv.add_argument("--pcap", required=True, help="capture file to analyse")
     lv.add_argument("--window", type=float, default=60.0)
-    lv.add_argument("--ledger", default="data/alerts.jsonl")
+    lv.add_argument("--ledger", default=str(Path("data") / "alerts.jsonl"))
     lv.set_defaults(func=cmd_live)
 
     s = sub.add_parser("selftest", help="prove the read-only constraints")

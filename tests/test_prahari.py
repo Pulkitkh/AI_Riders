@@ -65,9 +65,9 @@ def test_hash_chain_detects_tampering():
     ok, n, _ = led.verify()
     assert ok and n == 5
 
-    lines = (d / "a.jsonl").read_text().splitlines()
+    lines = (d / "a.jsonl").read_text(encoding="utf-8").splitlines()
     lines[2] = lines[2].replace('"recon_scanning"', '"benign"')
-    (d / "a.jsonl").write_text("\n".join(lines) + "\n")
+    (d / "a.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
     ok2, _, bad2 = AlertLedger(d / "a.jsonl").verify()
     assert not ok2 and bad2 is not None
 

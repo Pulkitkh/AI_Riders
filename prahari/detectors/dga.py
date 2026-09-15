@@ -27,7 +27,7 @@ FEATURES = ["length", "entropy", "vowel_ratio", "digit_ratio", "consonant_run",
 
 def load_bigrams() -> dict[str, float]:
     p = MODEL_DIR / "bigrams.json"
-    return json.loads(p.read_text()) if p.exists() else {}
+    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
 
 
 class DGADetector(Detector):

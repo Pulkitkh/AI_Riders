@@ -1,7 +1,7 @@
 {
   "per_class": {
-    "c2_beaconing": {
-      "tp": 15,
+    "recon_scanning": {
+      "tp": 5,
       "fp": 0,
       "fn": 0
     },
@@ -15,17 +15,17 @@
       "fp": 0,
       "fn": 0
     },
-    "recon_scanning": {
+    "dns_tunnelling": {
       "tp": 5,
+      "fp": 0,
+      "fn": 0
+    },
+    "c2_beaconing": {
+      "tp": 15,
       "fp": 0,
       "fn": 0
     },
     "encrypted_malware": {
-      "tp": 5,
-      "fp": 0,
-      "fn": 0
-    },
-    "dns_tunnelling": {
       "tp": 5,
       "fp": 0,
       "fn": 0

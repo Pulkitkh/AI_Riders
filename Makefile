@@ -1,6 +1,7 @@
 .PHONY: demo selftest replay live pcap dash test eval sweep train bench clean
 
-demo: selftest test replay live eval sweep   ## everything a judge needs to see
+demo:   ## everything a judge needs to see (Windows: python scripts/demo.py)
+	@python3 scripts/demo.py
 
 selftest:
 	@python3 -m prahari.cli selftest

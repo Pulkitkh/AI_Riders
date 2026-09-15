@@ -29,7 +29,7 @@ class AlertLedger:
             self._resume()
 
     def _resume(self) -> None:
-        for line in self.path.read_text().splitlines():
+        for line in self.path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             rec = json.loads(line)
@@ -46,7 +46,7 @@ class AlertLedger:
         digest = self._digest(record, self.prev, self.seq)
         record = dict(record)
         record["integrity"] = {"seq": self.seq, "prev_sha256": self.prev, "sha256": digest}
-        with self.path.open("a") as fh:
+        with self.path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
         self.prev = digest
         return record

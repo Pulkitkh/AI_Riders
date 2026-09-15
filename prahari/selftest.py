@@ -27,7 +27,7 @@ DETECTION_PATH = ["engine.py", "features.py", "model.py", "fusion.py", "schema.p
 
 
 def _imports(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text())
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     found: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -75,13 +75,20 @@ def main() -> int:
     print(f"[{'PASS' if ok_sockets else 'FAIL'}] process holds no sockets (found {n})")
 
     from .ledger import AlertLedger
-    led = AlertLedger("data/alerts.jsonl")
+    led = AlertLedger(Path("data") / "alerts.jsonl")
     ok_chain, count, bad = led.verify()
-    print(f"[{'PASS' if ok_chain else 'FAIL'}] alert hash chain verifies "
-          f"({count} records{'' if ok_chain else f', first bad: {bad}'})")
+    if count == 0:
+        # An empty chain verifies trivially, and reporting that as a PASS would
+        # be the kind of vacuous green tick this project exists to avoid.
+        ok_chain = None
+        print("[SKIP] alert hash chain — ledger is empty, nothing to verify")
+        print("       run `python -m prahari.cli replay` first, then re-run this")
+    else:
+        print(f"[{'PASS' if ok_chain else 'FAIL'}] alert hash chain verifies "
+              f"({count} records{'' if ok_chain else f', first bad: {bad}'})")
 
     print("=" * 52)
-    all_ok = ok_imports and ok_sockets and ok_chain
+    all_ok = ok_imports and ok_sockets and ok_chain is not False
     print("RESULT:", "read-only properties hold" if all_ok else "CHECK FAILED")
     return 0 if all_ok else 1
 
