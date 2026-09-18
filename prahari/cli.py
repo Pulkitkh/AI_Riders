@@ -55,9 +55,26 @@ def _fmt_alert(a) -> str:
             f"conf {a.confidence:<5.2f} {a.src_ip:>15} → {str(a.dst_ip):<18} {ev[:78]}")
 
 
+def _apply_visibility(flows, args):
+    """Optionally throw away the reverse direction of every flow.
+
+    The problem statement's "unidirectional" is ambiguous: we read it as a
+    diode carrying a TAP copy of both directions, but a one-way tap that sees
+    only one direction is a legitimate reading too. This flag runs the stricter
+    one so the cost is measured rather than argued about.
+    """
+    if not getattr(args, "single_direction", False):
+        return flows
+    from .visibility import project_all
+    print("SINGLE-DIRECTION MODE: reverse direction discarded before the engine.")
+    print("  no SYN-ACK, no inbound bytes, no DNS rcode, no server certificate.")
+    return project_all(flows)
+
+
 def cmd_replay(args) -> int:
     gen = TrafficGenerator(seed=args.seed, jitter=args.jitter)
     flows = gen.capture(args.duration, classes=ALL_ATTACKS)
+    flows = _apply_visibility(flows, args)
     print(f"capture: {len(flows)} flows over {args.duration}s "
           f"(seed {args.seed}, C2 jitter {args.jitter:.0%})")
     print("-" * 118)
@@ -108,6 +125,7 @@ def cmd_live(args) -> int:
     if not flows:
         print("no IPv4 TCP/UDP flows in that capture — nothing to analyse.")
         return 1
+    flows = _apply_visibility(flows, args)
     span = flows[-1].ts - flows[0].ts
     print(f"  {span / 60:.1f} minutes of traffic, "
           f"{len({f.src_ip for f in flows})} source hosts, "
@@ -181,12 +199,16 @@ def main(argv=None) -> int:
     r.add_argument("--seed", type=int, default=1337)
     r.add_argument("--jitter", type=float, default=0.20)
     r.add_argument("--window", type=float, default=60.0)
+    r.add_argument("--single-direction", action="store_true",
+                      help="see only one direction of each flow (strict reading)")
     r.add_argument("--ledger", default=str(Path("data") / "alerts.jsonl"))
     r.set_defaults(func=cmd_replay)
 
     lv = sub.add_parser("live", help="analyse a real .pcap / .pcapng capture")
     lv.add_argument("--pcap", required=True, help="capture file to analyse")
     lv.add_argument("--window", type=float, default=60.0)
+    lv.add_argument("--single-direction", action="store_true",
+                       help="see only one direction of each flow (strict reading)")
     lv.add_argument("--ledger", default=str(Path("data") / "alerts.jsonl"))
     lv.set_defaults(func=cmd_live)
 

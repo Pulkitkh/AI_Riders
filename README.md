@@ -86,6 +86,7 @@ Everything below runs. Nothing here is a mock, a stub, or a screenshot.
 | Read-only self-test | working |
 | Held-out evaluation + jitter sweep | working |
 | PCAP / PCAPNG reader — real packets to the same `Flow` record | working |
+| Single-direction (one-way tap) degraded mode, measured | working |
 | Real JA3 fingerprint + X.509 parsing from the handshake | working |
 
 ---
@@ -208,6 +209,44 @@ CORRELATED INCIDENTS
 
 ---
 
+## What "unidirectional" means here
+
+The problem statement says *unidirectional IP traffic*, and the phrase carries
+two readings. **We assume a data diode carries a TAP copy of both directions of
+each flow into the read-only enclave** — traffic crosses the boundary one way,
+but each conversation is seen whole. The stricter reading is that only one
+direction of any flow is ever observable, as with asymmetric routing or a
+one-way tap on a single fibre.
+
+We do not get to pick which one the sponsor meant, so we implemented the
+stricter one and measured the cost:
+
+```
+python3 eval/degraded.py
+```
+
+| threat class | both dirs | one dir | what is lost |
+|---|---|---|---|
+| c2_beaconing | 5/5 | 5/5 | unaffected — timing is a client-side property |
+| volumetric_ddos | 5/5 | 5/5 | unaffected — source entropy is client-side |
+| dns_tunnelling | 5/5 | 5/5 | loses response size; query entropy and rate retained |
+| recon_scanning | 5/5 | 5/5 | loses handshake completion; fan-out breadth retained |
+| data_exfiltration | 5/5 | 5/5 | loses out/in ratio; absolute outbound volume retained |
+| encrypted_malware | 5/5 | 5/5 | loses server cert and JA4S; JA3 + shape + rarity retained |
+| dga_resolution | 5/5 | **4/5** | loses NXDOMAIN rate; lexical + burst retained |
+
+**34 of 35 detections retained (97%).** Run it yourself, or add
+`--single-direction` to `replay` or `live`.
+
+The same mechanism answers a second question. TLS 1.3 encrypts the server
+Certificate message, so self-signed status and validity window are unreadable
+there too — identical loss, identical fallback. When the TLS detector scores
+without server-side evidence it says so in the alert (`server_side_observed:
+false`) and carries a caveat, rather than treating "not observed" as "observed
+to be benign".
+
+---
+
 ## Honest limits
 
 A prototype that oversells itself loses the viva. These are the gaps.
@@ -281,12 +320,12 @@ prahari/
   cli.py           live / replay / selftest / bench
   detectors/       one module per threat family
 dashboard/         live SOC view
-eval/              held-out evaluation + jitter sweep
+eval/              held-out evaluation, jitter sweep, degraded-mode measurement
 scripts/train.py      fits both models and the bigram table
 scripts/make_pcap.py  writes a genuine wire-format .pcap (round-trip test + demo)
 scripts/demo.py       cross-platform `make demo`, for machines without make
 docs/DEMO.md       the runbook for presenting this
-tests/             18 tests
+tests/             21 tests
 ```
 
 ---

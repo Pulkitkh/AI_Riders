@@ -15,6 +15,21 @@ What survives encryption:
     page load have different packet-size and direction signatures even when
     every byte is opaque.
 
+Two situations remove the server side of the handshake entirely:
+
+  * **TLS 1.3** encrypts the Certificate message (RFC 8446 moves it inside the
+    encrypted handshake), so self-signed status and validity window are simply
+    not observable. They were readable through TLS 1.2 and are not here.
+  * **Single-direction visibility** — if the tap carries only one direction of
+    each flow, every server-side message is gone for the same reason.
+
+Both land in the same place: no certificate facts, no JA4S. So rather than
+scoring low and silently missing, the detector switches to a documented
+fallback that renormalises over what remains observable from the client side —
+JA3 rarity, *destination* rarity, externality and conversation shape — and
+marks every alert it raises that way. A detector that cannot observe a feature
+should say so, not quietly treat "not observed" as "observed to be benign".
+
 Honest limit: mature implants mimic browser fingerprints, and Encrypted Client
 Hello removes SNI visibility entirely as it rolls out. That is why rarity and
 sequence shape carry more weight over time than the fingerprint lookup does.
@@ -23,7 +38,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..features import mean, stdev
+from ..features import is_rfc1918, mean, stdev
 from ..schema import Flow
 from .base import Detection, Detector
 
@@ -34,15 +49,48 @@ class EncryptedMalwareDetector(Detector):
     threat_class = "encrypted_malware"
     threshold = 0.55
 
+    # Ceiling for the degraded path: weaker evidence must not reach the same
+    # confidence as the full-visibility path, or the score stops meaning anything.
+    DEGRADED_CEILING = 0.85
+
     def __init__(self) -> None:
         self.ja4_hosts: dict[str, set[str]] = defaultdict(set)   # environment-wide rarity
+        self.dst_hosts: dict[str, set[str]] = defaultdict(set)   # who talks to this dst
         self.by_pair: dict[tuple[str, str], list[Flow]] = defaultdict(list)
 
     def observe(self, flow: Flow) -> None:
         if not flow.tls_ja4:
             return
         self.ja4_hosts[flow.tls_ja4].add(flow.src_ip)
+        self.dst_hosts[flow.dst_ip].add(flow.src_ip)
         self.by_pair[(flow.src_ip, flow.dst_ip)].append(flow)
+
+    def _degraded_score(self, dst: str, ja4: str, prevalence: int,
+                        no_sni: bool, shape: dict[str, float]) -> tuple[float, dict]:
+        """Score without any server-side evidence.
+
+        Weights are redistributed onto client-observable signals rather than
+        left on the floor. Destination rarity does most of the work the
+        certificate used to: a host reached by exactly one machine in the
+        environment is interesting regardless of what its certificate said.
+        """
+        dst_prevalence = len(self.dst_hosts.get(dst, ()))
+        score = 0.0
+        if prevalence <= 1:
+            score += 0.30
+        elif prevalence <= 3:
+            score += 0.15
+        if dst_prevalence <= 1:
+            score += 0.25
+        elif dst_prevalence <= 3:
+            score += 0.12
+        if not is_rfc1918(dst):
+            score += 0.10
+        if shape["out_share"] > 0.6:
+            score += 0.15
+        if no_sni:
+            score += 0.10
+        return min(score, self.DEGRADED_CEILING), {"dst_host_prevalence": dst_prevalence}
 
     @staticmethod
     def shape_features(flows: list[Flow]) -> dict[str, float]:
@@ -67,18 +115,26 @@ class EncryptedMalwareDetector(Detector):
             no_sni = all(not f.tls_sni for f in flows)
             shape = self.shape_features(flows)
 
-            score = 0.0
-            if prevalence <= 1:
-                score += 0.35                       # fingerprint seen on one host only
-            if self_signed:
-                score += 0.25
-            if short_cert:
-                score += 0.20
-            if no_sni:
-                score += 0.10
-            if shape["out_share"] > 0.6:            # upload-shaped, not page-load-shaped
-                score += 0.10
-            score = min(score, 1.0)
+            # Was the server side observable at all? TLS 1.3 and a one-way tap
+            # both answer no, and both must take the fallback rather than score
+            # a missing feature as a benign one.
+            cert_seen = any(f.tls_cert_days is not None for f in flows)
+            extra: dict = {}
+            if cert_seen:
+                score = 0.0
+                if prevalence <= 1:
+                    score += 0.35                   # fingerprint seen on one host only
+                if self_signed:
+                    score += 0.25
+                if short_cert:
+                    score += 0.20
+                if no_sni:
+                    score += 0.10
+                if shape["out_share"] > 0.6:        # upload-shaped, not page-load-shaped
+                    score += 0.10
+                score = min(score, 1.0)
+            else:
+                score, extra = self._degraded_score(dst, ja4, prevalence, no_sni, shape)
 
             if score >= self.threshold:
                 out.append(Detection(
@@ -90,13 +146,19 @@ class EncryptedMalwareDetector(Detector):
                     evidence={
                         "ja4": ja4,
                         "ja4_host_prevalence": prevalence,
-                        "self_signed_cert": self_signed,
-                        "min_cert_validity_days": min((f.tls_cert_days or 999) for f in flows),
+                        "server_side_observed": cert_seen,
+                        **({"self_signed_cert": self_signed,
+                            "min_cert_validity_days":
+                                min((f.tls_cert_days or 999) for f in flows)}
+                           if cert_seen else extra),
                         "sni_present": not no_sni,
                         "outbound_packet_share": round(shape["out_share"], 3),
                         "mean_packet_size": round(shape["size_mean"], 1),
                     },
-                    caveat="metadata only — no payload was decrypted",
+                    caveat=("metadata only — no payload was decrypted" if cert_seen else
+                            "degraded: server-side handshake not observed "
+                            "(TLS 1.3 or single-direction tap); scored on "
+                            "client-side evidence only"),
                 ))
         return out
 

@@ -202,6 +202,47 @@ def test_detectors_fire_on_real_packet_bytes():
     assert len(from_packets) >= 6
 
 
+# --- single-direction visibility ---------------------------------------------
+def test_single_direction_keeps_most_classes():
+    """The strict reading of "unidirectional" must degrade, not collapse.
+
+    If only one direction of each flow is visible, the detectors that depend on
+    server-side evidence have to fall back. This asserts the fallback actually
+    works rather than trusting the slide that says it does.
+    """
+    from prahari.visibility import project_all
+    flows = TrafficGenerator(seed=2001, jitter=0.2).capture(1800, classes=ALL_ATTACKS)
+    full = {a.threat_class for a in Engine(window=60.0).run(flows)}
+    degraded = {a.threat_class for a in Engine(window=60.0).run(project_all(flows))}
+    assert len(full) == 7
+    assert len(degraded) >= 6, f"one-way visibility lost {sorted(full - degraded)}"
+
+
+def test_projection_removes_every_server_side_field():
+    from prahari.visibility import project
+    f = Flow(ts=0.0, src_ip="10.0.0.1", dst_ip="1.1.1.1", src_port=1234, dst_port=443,
+             pkts_in=9, bytes_in=900, synack=1, rst=1, pkt_sizes=[100, -200, 300],
+             dns_rcode="NXDOMAIN", tls_self_signed=True, tls_cert_days=7)
+    g = project(f)
+    assert (g.pkts_in, g.bytes_in, g.synack, g.rst) == (0, 0, 0, 0)
+    assert g.pkt_sizes == [100, 300]
+    assert g.dns_rcode is None and g.tls_cert_days is None
+    assert g.tls_self_signed is False
+    assert f.pkts_in == 9, "projection must not mutate the original flow"
+
+
+def test_tls_detector_marks_degraded_alerts_honestly():
+    """An alert raised without server-side evidence must say so."""
+    from prahari.visibility import project_all
+    flows = TrafficGenerator(seed=2002, jitter=0.2).capture(1800, classes=ALL_ATTACKS)
+    alerts = [a for a in Engine(window=60.0).run(project_all(flows))
+              if a.threat_class == "encrypted_malware"]
+    assert alerts, "degraded TLS detection produced nothing at all"
+    for a in alerts:
+        assert a.evidence["server_side_observed"] is False
+        assert "degraded" in a.caveat
+
+
 def test_read_only_selftest_passes():
     from prahari.selftest import check_no_network_imports
     ok, offenders = check_no_network_imports()
