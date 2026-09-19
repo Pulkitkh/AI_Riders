@@ -82,7 +82,7 @@ class EventBus:
 class LiveSensor:
     """Owns the capture thread, the engine, and the running statistics."""
 
-    def __init__(self, iface: str = "lo", window: float = 8.0, bus: EventBus | None = None):
+    def __init__(self, iface: str = "lo", window: float = 5.0, bus: EventBus | None = None):
         self.iface = iface
         self.window = window
         self.bus = bus or EventBus()

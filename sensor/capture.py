@@ -153,12 +153,21 @@ class FlowAssembler:
                         f.tls_cert_days = cert["cert_days"]
 
     def expire(self, now: float) -> list[Flow]:
-        """Return and drop flows that have gone idle or run too long."""
+        """Return and drop flows that are complete.
+
+        A flow is complete when it has gone idle, run too long, or been cleanly
+        torn down (a RST, or a FIN seen in both directions). Flushing a closed
+        connection immediately — rather than waiting out the idle timer — is what
+        lets a burst of short beacon connections be scored while the burst is
+        still fresh, which is exactly the real-time property a live console needs.
+        """
         done = []
         for key in list(self.live.keys()):
             acc = self.live[key]
-            if now - acc.last > self.idle or now - acc.first > self.active:
-                done.append(acc.flow)
+            f = acc.flow
+            closed = f.proto == "tcp" and (f.rst > 0 or f.fin >= 2)
+            if closed or now - acc.last > self.idle or now - acc.first > self.active:
+                done.append(f)
                 del self.live[key]
         return done
 
@@ -188,8 +197,18 @@ class LiveCapture:
         except OSError:
             return []
 
+    RCVBUF = 16 * 1024 * 1024        # absorb bursts without dropping frames
+
     def open(self) -> None:
         s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(ETH_P_ALL))
+        # A large receive buffer matters under load: a spoofed-source flood is
+        # thousands of packets in a fraction of a second, and a small kernel
+        # buffer would drop the tail — which on a real link is silent data loss,
+        # not just a flaky demo. Best-effort; not every kernel honours the size.
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.RCVBUF)
+        except OSError:
+            pass
         if self.iface and self.iface != "any":
             s.bind((self.iface, 0))
         s.settimeout(0.5)

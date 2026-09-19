@@ -112,7 +112,7 @@ def dns_query(txid: int, qname: str, qtype: int = 16) -> bytes:
             + _dns_qname(qname) + struct.pack("!HH", qtype, 1))
 
 
-ATTACKS = ("syn_flood", "port_scan", "c2_beacon", "dns_tunnel", "exfil")
+ATTACKS = ("syn_flood", "port_scan", "c2_beacon", "dns_tunnel", "exfil", "malware_tls")
 
 
 def syn_flood(raw: _Raw, target: str = "127.0.0.1", port: int = 80,
@@ -137,17 +137,34 @@ def port_scan(raw: _Raw, target: str = "127.0.0.1", src: str = "127.0.0.9",
 
 
 def c2_beacon(raw: _Raw, target: str = "127.0.0.77", src: str = "127.0.0.11",
-              beats: int = 8, interval: float = 1.0, jitter: float = 0.15) -> int:
-    """Regular callbacks to one host — C2 beaconing timing signature."""
+              beats: int = 12, interval: float = 0.6, jitter: float = 0.12) -> int:
+    """Regular callbacks to one host — the C2 beaconing timing signature.
+
+    Each check-in is a SEPARATE short connection (a fresh source port), because
+    that is what the detector counts: many regularly-spaced flows from one host
+    to a destination nobody else contacts. Reusing one port would collapse the
+    beats into a single flow and there would be nothing periodic to see. Every
+    beat is torn down with a FIN both ways so it flushes immediately, so the
+    whole pattern is scored within a second or two of the last beat. Twelve
+    beats clears the detector's six-event minimum with margin even if a packet
+    or two is missed.
+    """
     n = 0
-    for _ in range(beats):
+    for i in range(beats):
+        sport = 40000 + i          # a fresh connection per check-in
         raw.send(src, target, socket.IPPROTO_TCP,
-                 tcp_header(src, target, 51000, 443, TCP_SYN))
+                 tcp_header(src, target, sport, 443, TCP_SYN))
         raw.send(target, src, socket.IPPROTO_TCP,
-                 tcp_header(target, src, 443, 51000, TCP_SYN | TCP_ACK))
+                 tcp_header(target, src, 443, sport, TCP_SYN | TCP_ACK))
         raw.send(src, target, socket.IPPROTO_TCP,
-                 tcp_header(src, target, 51000, 443, TCP_PSH | TCP_ACK, payload=b"\x16\x03\x01" + b"\x00" * 60))
-        n += 3
+                 tcp_header(src, target, sport, 443, TCP_PSH | TCP_ACK,
+                            payload=b"\x16\x03\x01" + b"\x00" * 48))
+        # clean teardown, both directions -> flushed immediately
+        raw.send(src, target, socket.IPPROTO_TCP,
+                 tcp_header(src, target, sport, 443, TCP_FIN | TCP_ACK))
+        raw.send(target, src, socket.IPPROTO_TCP,
+                 tcp_header(target, src, 443, sport, TCP_FIN | TCP_ACK))
+        n += 5
         time.sleep(max(0.05, interval * (1 + random.uniform(-jitter, jitter))))
     return n
 
@@ -164,19 +181,100 @@ def dns_tunnel(raw: _Raw, resolver: str = "127.0.0.53", src: str = "127.0.0.23",
 
 
 def exfil(raw: _Raw, target: str = "127.0.0.200", src: str = "127.0.0.8",
-          chunks: int = 400) -> int:
-    """Large asymmetric outbound transfer — data exfiltration."""
-    seq = 1
-    raw.send(src, target, socket.IPPROTO_TCP, tcp_header(src, target, 52000, 443, TCP_SYN, seq))
-    raw.send(target, src, socket.IPPROTO_TCP, tcp_header(target, src, 443, 52000, TCP_SYN | TCP_ACK))
+          chunks: int = 600) -> int:
+    """Data exfiltration, told as its real two-act story.
+
+    The detector is deliberately baseline-relative: it will not cry exfiltration
+    the first time it sees a host, because most hosts that send a lot are backup
+    jobs. So this first plays the host being NORMAL — a download-heavy session,
+    receiving far more than it sends — then, after a beat, the same host inverts
+    that ratio and pushes a large volume out to a destination it never used
+    before. That inversion against the host's own established baseline is the
+    signal, and it is a far stronger claim than "someone sent some bytes".
+
+    Sends are paced so a burst does not overrun the capture buffer on loopback;
+    600 chunks well clears the 200 KB floor even if some frames are lost.
+    """
+    n = 0
     body = bytes(random.getrandbits(8) for _ in range(1400))
-    for _ in range(chunks):
-        raw.send(src, target, socket.IPPROTO_TCP,
-                 tcp_header(src, target, 52000, 443, TCP_PSH | TCP_ACK, seq, body))
-        seq += len(body)
-    raw.send(target, src, socket.IPPROTO_TCP,
-             tcp_header(target, src, 443, 52000, TCP_PSH | TCP_ACK, payload=b"ok"))
-    return chunks + 3
+
+    # Act 1 — normal: this host mostly downloads. Establishes a low out/in ratio.
+    sp = 52000
+    raw.send(src, target, socket.IPPROTO_TCP, tcp_header(src, target, sp, 443, TCP_SYN))
+    raw.send(target, src, socket.IPPROTO_TCP, tcp_header(target, src, 443, sp, TCP_SYN | TCP_ACK))
+    raw.send(src, target, socket.IPPROTO_TCP, tcp_header(src, target, sp, 443, TCP_PSH | TCP_ACK, payload=b"GET /page"))
+    for _ in range(40):                       # server sends a lot back
+        raw.send(target, src, socket.IPPROTO_TCP, tcp_header(target, src, 443, sp, TCP_PSH | TCP_ACK, payload=body))
+        n += 1
+    raw.send(src, target, socket.IPPROTO_TCP, tcp_header(src, target, sp, 443, TCP_FIN | TCP_ACK))
+    raw.send(target, src, socket.IPPROTO_TCP, tcp_header(target, src, 443, sp, TCP_FIN | TCP_ACK))
+
+    time.sleep(5.0)                           # let the baseline window close
+
+    # Act 2 — exfiltration: the ratio inverts, to a destination never seen before.
+    sp = 53000
+    raw.send(src, target, socket.IPPROTO_TCP, tcp_header(src, target, sp, 443, TCP_SYN))
+    raw.send(target, src, socket.IPPROTO_TCP, tcp_header(target, src, 443, sp, TCP_SYN | TCP_ACK))
+    for i in range(chunks):
+        raw.send(src, target, socket.IPPROTO_TCP, tcp_header(src, target, sp, 443, TCP_PSH | TCP_ACK, payload=body))
+        n += 1
+        if i % 60 == 59:
+            time.sleep(0.02)                  # pace: don't overrun the buffer
+    raw.send(target, src, socket.IPPROTO_TCP, tcp_header(target, src, 443, sp, TCP_PSH | TCP_ACK, payload=b"ok"))
+    return n
+
+
+def _client_hello(ciphers, exts, curves) -> bytes:
+    """A structurally valid TLS 1.2 ClientHello. Real bytes in real order, so the
+    sensor computes a real JA3 from them — a fake one would not survive parsing."""
+    body = b""
+    for et in exts:
+        if et == 0x000a:
+            g = b"".join(struct.pack("!H", c) for c in curves)
+            ext = struct.pack("!H", len(g)) + g
+        elif et == 0x000b:
+            ext = bytes([1, 0])
+        else:
+            ext = b""
+        body += struct.pack("!HH", et, len(ext)) + ext
+    hello = (struct.pack("!H", 0x0303) + bytes(range(32)) + b"\x00"
+             + struct.pack("!H", len(ciphers) * 2)
+             + b"".join(struct.pack("!H", c) for c in ciphers)
+             + b"\x01\x00" + struct.pack("!H", len(body)) + body)
+    hs = b"\x01" + struct.pack("!I", len(hello))[1:] + hello
+    return b"\x16\x03\x01" + struct.pack("!H", len(hs)) + hs
+
+
+# A short, dated cipher list — the shape of a malware TLS stack that links an old
+# library and never updates it, so its JA3 is rare in a modern environment.
+_ODD_CIPHERS = [0xc014, 0xc013, 0x0035, 0x002f, 0x000a]
+_ODD_EXTS = [0x0000, 0x000b, 0x000a, 0x0023, 0x000d]
+_ODD_CURVES = [0x0017, 0x0018]
+
+
+def malware_tls(raw: _Raw, target: str = "127.0.0.66", src: str = "127.0.0.12",
+                sessions: int = 3) -> int:
+    """Encrypted C2 over TLS — detected by fingerprint rarity, no decryption.
+
+    Crafts real ClientHellos with an unusual cipher/extension list, so the JA3
+    the sensor computes is one it sees on a single host talking to a destination
+    nobody else contacts. Nothing here is decrypted; the handshake is in the
+    clear by design, and that is all the detector reads.
+    """
+    n = 0
+    hello = _client_hello(_ODD_CIPHERS, _ODD_EXTS, _ODD_CURVES)
+    for i in range(sessions):
+        sp = 55000 + i
+        raw.send(src, target, socket.IPPROTO_TCP, tcp_header(src, target, sp, 443, TCP_SYN))
+        raw.send(target, src, socket.IPPROTO_TCP, tcp_header(target, src, 443, sp, TCP_SYN | TCP_ACK))
+        raw.send(src, target, socket.IPPROTO_TCP, tcp_header(src, target, sp, 443, TCP_PSH | TCP_ACK, payload=hello))
+        # a bit of opaque back-and-forth, then close
+        raw.send(target, src, socket.IPPROTO_TCP, tcp_header(target, src, 443, sp, TCP_PSH | TCP_ACK, payload=bytes(random.getrandbits(8) for _ in range(200))))
+        raw.send(src, target, socket.IPPROTO_TCP, tcp_header(src, target, sp, 443, TCP_FIN | TCP_ACK))
+        raw.send(target, src, socket.IPPROTO_TCP, tcp_header(target, src, 443, sp, TCP_FIN | TCP_ACK))
+        n += 6
+        time.sleep(0.4)
+    return n
 
 
 def benign(raw: _Raw, n: int = 40) -> int:
@@ -195,7 +293,8 @@ def benign(raw: _Raw, n: int = 40) -> int:
 
 
 _DISPATCH = {"syn_flood": syn_flood, "port_scan": port_scan, "c2_beacon": c2_beacon,
-             "dns_tunnel": dns_tunnel, "exfil": exfil, "benign": benign}
+             "dns_tunnel": dns_tunnel, "exfil": exfil, "malware_tls": malware_tls,
+             "benign": benign}
 
 
 def launch(name: str) -> int:

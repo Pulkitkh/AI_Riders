@@ -148,9 +148,10 @@ const Live = (() => {
       return;
     }
 
-    const buttons = ["syn_flood", "port_scan", "c2_beacon", "dns_tunnel", "exfil", "benign"];
+    const buttons = ["syn_flood", "port_scan", "c2_beacon", "dns_tunnel", "malware_tls", "exfil", "benign"];
+    const TIP = { exfil: "baseline-relative — best shown in Replay on a loopback demo; fires live on a real span port" };
     $("#attack-buttons").innerHTML = buttons.map((n) =>
-      `<button class="btn ghost" data-atk="${n}">${n.replace("_", " ")}</button>`).join("");
+      `<button class="btn ghost" data-atk="${n}"${TIP[n] ? ` title="${TIP[n]}"` : ""}>${n.replace("_", " ")}</button>`).join("");
     $$("#attack-buttons button").forEach((b) => b.addEventListener("click", () => launch(b.dataset.atk, b)));
 
     if (!st.capture_available) {
