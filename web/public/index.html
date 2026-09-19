@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PRAHARI — passive network threat detection</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%9B%A1%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <span class="brand">
+    <h1>PRAHARI</h1>
+    <span class="tag">It only listens.</span>
+  </span>
+  <span class="chips" id="posture-chips">
+    <span class="chip">read-only ingest</span>
+    <span class="chip">no return path</span>
+    <span class="chip">no payload decryption</span>
+  </span>
+  <span class="grow"></span>
+  <span class="chips">
+    <span class="chip" id="mode-chip">checking…</span>
+    <button class="btn ghost" id="theme-btn" title="Toggle theme" aria-label="Toggle theme">Theme</button>
+  </span>
+</header>
+
+<nav class="tabs" role="tablist" id="tabs">
+  <button role="tab" data-tab="live" aria-selected="true">Live sensor</button>
+  <button role="tab" data-tab="replay" aria-selected="false">Replay scenarios</button>
+  <button role="tab" data-tab="degraded" aria-selected="false">One-way visibility</button>
+  <button role="tab" data-tab="metrics" aria-selected="false">Measured results</button>
+  <button role="tab" data-tab="ledger" aria-selected="false">Tamper-evident ledger</button>
+  <button role="tab" data-tab="proof" aria-selected="false">Read-only proof</button>
+</nav>
+
+<main>
+  <!-- ===================== LIVE ===================== -->
+  <section id="tab-live" class="tabpane">
+    <div id="live-unavailable" class="banner" hidden></div>
+
+    <div class="controls">
+      <div class="field">
+        <label>Sensor</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="live-toggle">Start sensor</button>
+          <span class="clock" id="live-clock">idle</span>
+        </div>
+      </div>
+      <div class="field grow">
+        <label>Launch real attack traffic (crafted packets on the wire)</label>
+        <div class="chips" id="attack-buttons"></div>
+      </div>
+    </div>
+
+    <div class="stats" id="live-stats" style="margin-bottom:14px"></div>
+
+    <div class="split">
+      <div class="card">
+        <h2>Live alerts <span class="muted" id="live-alert-count"></span>
+          <span class="grow"></span>
+          <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">newest first · click a row for evidence</span>
+        </h2>
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th>Time</th><th>Severity</th><th>Threat</th>
+              <th>Source → Destination</th><th>Evidence</th><th class="num">Conf</th>
+            </tr></thead>
+            <tbody id="live-alerts">
+              <tr><td colspan="6" class="empty">Start the sensor, then launch an attack — alerts stream in as the engine raises them.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <h2>Correlated incidents</h2>
+          <div class="body" id="live-incidents"><p class="empty" style="padding:12px 0">No multi-stage host yet.</p></div>
+        </div>
+        <div class="card">
+          <h2>By threat class</h2>
+          <div class="body" id="live-byclass"><p class="empty" style="padding:12px 0">—</p></div>
+        </div>
+        <div class="card">
+          <h2>Read-only posture</h2>
+          <div class="body">
+            <ul class="posture">
+              <li><span class="pass">✓</span> capture socket receives only — the detection path holds none</li>
+              <li><span class="pass">✓</span> no route back to the monitored network</li>
+              <li><span class="pass">✓</span> no live threat-intel lookups</li>
+              <li><span class="pass">✓</span> models fitted offline, carried in signed</li>
+              <li><span class="pass">✓</span> metadata only — zero payload decryption</li>
+            </ul>
+            <p class="note">Proven, not asserted — see the Read-only proof tab.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== REPLAY ===================== -->
+  <section id="tab-replay" class="tabpane" hidden>
+    <div class="controls">
+      <div class="field">
+        <label for="scenario">Scenario</label>
+        <select id="scenario"></select>
+      </div>
+      <div class="field">
+        <label for="jitter">C2 jitter <span id="jitter-val" class="mono"></span></label>
+        <input type="range" id="jitter" min="0" max="50" value="20" step="5">
+      </div>
+      <div class="field">
+        <label class="switch"><input type="checkbox" id="single-dir"> One-way visibility only</label>
+      </div>
+      <button class="btn" id="run-replay">Analyse</button>
+      <div class="field">
+        <label>Or upload a .pcap</label>
+        <input type="file" id="pcap-file" accept=".pcap,.pcapng,.cap">
+      </div>
+    </div>
+    <p class="note" id="replay-blurb"></p>
+    <div class="stats" id="replay-stats" style="margin:14px 0"></div>
+    <div class="split">
+      <div class="card">
+        <h2>Alerts <span class="muted" id="replay-alert-count"></span></h2>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Time</th><th>Severity</th><th>Threat</th>
+              <th>Source → Destination</th><th>Evidence</th><th class="num">Conf</th></tr></thead>
+            <tbody id="replay-alerts"><tr><td colspan="6" class="empty">Choose a scenario and press Analyse.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card"><h2>Correlated incidents</h2><div class="body" id="replay-incidents"></div></div>
+        <div class="card"><h2>By threat class</h2><div class="body" id="replay-byclass"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== DEGRADED ===================== -->
+  <section id="tab-degraded" class="tabpane" hidden>
+    <div class="card"><div class="body">
+      <p style="margin-top:0"><b>What "unidirectional" means here.</b> We assume the diode carries a TAP copy of
+        <b>both</b> directions of each flow. The stricter reading — only one direction ever visible — breaks
+        SYN/SYN-ACK completion, the out/in byte ratio, NXDOMAIN rate and every server-side TLS field. Rather than
+        argue about it, we discard the reverse direction before the engine and measure what survives.</p>
+      <div class="stats" id="degraded-stats" style="margin:12px 0"></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Threat class</th><th class="num">Both directions</th><th class="num">One direction</th>
+            <th>What is lost</th></tr></thead>
+          <tbody id="degraded-rows"><tr><td colspan="4" class="empty"><span class="spinner"></span> measuring…</td></tr></tbody>
+        </table>
+      </div>
+      <p class="note" id="degraded-note"></p>
+    </div></div>
+  </section>
+
+  <!-- ===================== METRICS ===================== -->
+  <section id="tab-metrics" class="tabpane" hidden>
+    <div class="split">
+      <div class="card">
+        <h2>Held-out evaluation</h2>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Threat class</th><th class="num">Precision</th><th class="num">Recall</th>
+            <th class="num">F1</th><th class="num">TP/FP/FN</th></tr></thead>
+          <tbody id="metrics-rows"></tbody>
+        </table></div>
+        <div class="body"><div class="stats" id="metrics-stats"></div></div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <h2>Beacon recall vs C2 jitter</h2>
+          <div class="body"><div id="sweep-chart"></div>
+            <p class="note">A detector that works only at zero jitter does not work. Recall is reported across the range, not as one number.</p>
+          </div>
+        </div>
+        <div class="card"><h2>Honest caveats</h2><div class="body"><ul class="posture" id="metrics-caveats"></ul></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== LEDGER ===================== -->
+  <section id="tab-ledger" class="tabpane" hidden>
+    <div class="card"><div class="body">
+      <p style="margin-top:0">Every alert is appended to a <b>SHA-256 hash-chained</b> log. It is not a blockchain — it is
+        tamper-<i>evident</i>: change one byte of one past alert and re-walking the chain names the record that broke.
+        This is what the CERT-In 180-day retention duty actually needs.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">
+        <button class="btn ghost" id="verify-clean">Build &amp; verify a clean chain</button>
+        <button class="btn danger" id="verify-tamper">Tamper with one record, then verify</button>
+      </div>
+      <div id="ledger-result"></div>
+    </div></div>
+  </section>
+
+  <!-- ===================== PROOF ===================== -->
+  <section id="tab-proof" class="tabpane" hidden>
+    <div class="card"><div class="body">
+      <p style="margin-top:0">Constraint (a): the sensor sits behind a diode — traffic in, nothing back. Before any detection,
+        here is the property everything depends on. This walks the syntax tree of every module in the detection path and
+        fails if one imports a socket, an HTTP client, or scapy. It also counts the sockets this interpreter holds.</p>
+      <button class="btn" id="run-selftest">Run the read-only self-test</button>
+      <div id="proof-result" style="margin-top:14px"></div>
+    </div></div>
+  </section>
+</main>
+
+<!-- alert detail drawer -->
+<div id="scrim" class="scrim" hidden></div>
+<aside id="drawer" class="drawer" hidden aria-label="Alert detail">
+  <header>
+    <span class="brand"><h1 style="font-size:14px" id="drawer-title">Alert</h1></span>
+    <span class="grow"></span>
+    <button class="btn ghost" id="drawer-close" aria-label="Close">✕</button>
+  </header>
+  <div class="content" id="drawer-content"></div>
+</aside>
+
+<script src="app.js"></script>
+</body>
+</html>

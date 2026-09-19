@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "python3 web/build.py",
+  "outputDirectory": "web/public",
+  "functions": { "api/index.py": { "memory": 512, "maxDuration": 30 } },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" }
+  ],
+  "headers": [
+    { "source": "/data/(.*)", "headers": [
+      { "key": "Cache-Control", "value": "public, max-age=300" } ] }
+  ]
+}

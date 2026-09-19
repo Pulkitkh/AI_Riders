@@ -1,0 +1,12 @@
+# One-command live deploy for a demo VM.
+#   docker compose up --build
+# Host networking + NET_RAW give the sensor a real tap on the host's traffic.
+services:
+  prahari:
+    build: .
+    network_mode: host          # real capture on the host's interfaces
+    cap_add: [NET_RAW]
+    environment:
+      IFACE: eth0               # set to the interface you want to monitor
+      PORT: "8000"
+    restart: unless-stopped

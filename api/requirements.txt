@@ -1,0 +1,2 @@
+# PRAHARI has no third-party dependencies — the detection engine is pure CPython.
+# This file exists only so Vercel detects the Python runtime for api/index.py.

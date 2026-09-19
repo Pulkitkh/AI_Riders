@@ -120,6 +120,28 @@ class Engine:
         self.stats.wall_end = time.perf_counter()
         return emitted
 
+    def advance(self, now: float) -> list[Alert]:
+        """Close every window that has ended by wall-clock ``now``.
+
+        Live capture is bursty: an attack ends and then the wire may go quiet,
+        so no later flow arrives to push the window clock forward. Without a
+        time-driven close the last window of a burst would never be evaluated
+        and a real-time console would stall between bursts. The sensor calls
+        this on a timer; replay never needs it because the next flow always
+        advances the clock.
+        """
+        emitted: list[Alert] = []
+        if self._window_end is None:
+            return emitted
+        if now - self._window_end > self.MAX_CATCHUP * self.window:
+            emitted += self._close_window(self._window_end)
+            self._window_end = now + self.window
+        else:
+            while now >= self._window_end:
+                emitted += self._close_window(self._window_end)
+                self._window_end += self.window
+        return emitted
+
     def run(self, flows, progress=None) -> list[Alert]:
         """Replay a whole capture. Flows must be time-ordered."""
         out: list[Alert] = []

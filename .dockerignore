@@ -1,0 +1,9 @@
+.git
+__pycache__
+*.pyc
+data/*.pcap
+data/*.jsonl
+web/public/data
+node_modules
+*.pptx
+*.pdf

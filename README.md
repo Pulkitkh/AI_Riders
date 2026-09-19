@@ -15,6 +15,48 @@ no active probing, and no payload decryption**.
 
 ---
 
+## The live web console
+
+PRAHARI ships a real-time SOC dashboard backed by the same engine. It runs in
+two forms, and the difference between them is honest, not cosmetic:
+
+**Live sensor (a real server).** On a Linux host it taps a real interface with a
+raw socket, assembles flows off the wire, runs the engine, and streams every
+alert to the browser over Server-Sent Events as it happens. Real packets, real
+capture, real-time detection.
+
+```bash
+sudo python3 -m web.server --live --iface eth0 --port 8000    # tap eth0
+#   or, self-contained on any Linux box (needs root):
+sudo python3 -m web.server --live --iface lo --port 8000
+```
+
+Open `http://<host>:8000`, press **Start sensor**, and — for a demo where no
+real attacker is handy — press the attack buttons, which craft genuine attack
+packets on the loopback interface for the sensor to catch. Nothing is mocked:
+the packets travel, the sensor sniffs them, the dashboard lights up.
+
+One command on a cloud VM:
+
+```bash
+docker compose up --build      # host networking + NET_RAW; open :8000
+```
+
+**Static viewer (shareable link).** For a URL the jury can just click, the same
+front end deploys to any static/serverless host (Vercel, Netlify, GitHub
+Pages). There it cannot tap a NIC — no serverless platform can — so live mode
+stands down and the **Replay scenarios**, **one-way visibility**, **metrics**,
+**ledger** and **read-only proof** tabs run instead, driven either by the
+precomputed datasets or by the stateless serverless API. See
+[`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+Why the split: live capture needs a raw socket, root, and a process that stays
+alive. Serverless gives none of those. Rather than fake a live feed on a
+platform that cannot produce one, PRAHARI runs the real sensor on a real host
+and keeps the static viewer honestly read-only.
+
+---
+
 ## Run it on real captured traffic
 
 ```bash
@@ -319,14 +361,41 @@ prahari/
   api.py           dashboard server (outside the detection path, on purpose)
   cli.py           live / replay / selftest / bench
   detectors/       one module per threat family
-dashboard/         live SOC view
+sensor/
+  capture.py       AF_PACKET live capture -> Flow: real NIC tap, no libpcap
+  attack.py        crafts real attack packets on the wire, for demo + tests
+  live.py          continuous capture -> engine -> SSE event bus
+web/
+  service.py       every API answer as a plain dict (one implementation)
+  router.py        one request router shared by the local server and Vercel
+  server.py        local / on-server app: static + API + live SSE stream
+  build.py         precomputes the demo datasets
+  public/          the SOC dashboard (one HTML, one CSS, one JS; no CDN)
+api/index.py       Vercel serverless entrypoint (stateless endpoints)
+dashboard/         earlier standalone SOC view (replaced by web/public)
 eval/              held-out evaluation, jitter sweep, degraded-mode measurement
 scripts/train.py      fits both models and the bigram table
 scripts/make_pcap.py  writes a genuine wire-format .pcap (round-trip test + demo)
 scripts/demo.py       cross-platform `make demo`, for machines without make
 docs/DEMO.md       the runbook for presenting this
-tests/             21 tests
+docs/DEPLOY.md     live-sensor and static-viewer deployment
+tests/             36 tests (21 engine + 15 web)
 ```
+
+---
+
+## Influences and prior art
+
+A browser-based real-time flow console — an overview list that drills into
+per-flow detail — is a well-trodden pattern; HoangNV2001's *Real-time-IDS* (an
+academic Flask + Scapy + scikit-learn project) is one open example, and looking
+at it helped shape our dashboard's overview-to-detail interaction. PRAHARI shares
+none of its code. That project is an **active** Windows capture agent built on
+third-party libraries; ours is a **passive, read-only, zero-dependency** engine
+built around the diode constraint the problem statement sets — the opposite
+architecture. The flow-feature taxonomy (packet-length and inter-arrival
+statistics, TCP-flag counts) follows the CICFlowMeter conventions common across
+the field.
 
 ---
 

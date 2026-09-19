@@ -56,7 +56,7 @@ class AlertLedger:
         prev, n = GENESIS, 0
         if not self.path.exists():
             return True, 0, None
-        for line in self.path.read_text().splitlines():
+        for line in self.path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             rec = json.loads(line)
