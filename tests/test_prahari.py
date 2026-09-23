@@ -89,11 +89,14 @@ def test_engine_is_deterministic():
 
 
 def test_benign_only_capture_is_quiet():
-    """The negative test that matters: no attacks in, no alerts out except the
-    one documented false positive (the nightly backup host)."""
+    """The negative test that matters: no attacks in, no alerts out — including
+    the nightly-backup host, whose inverted byte ratio used to be the one
+    documented false positive. The learned exfil model separates it from real
+    exfiltration on `dst_external` (the backup goes to an internal file server),
+    so the negative control is now completely silent."""
     flows = TrafficGenerator(seed=99, jitter=0.2).capture(1800, classes=set())
     alerts = Engine(window=60.0).run(flows)
-    noisy = [a.threat_class for a in alerts if a.threat_class != "data_exfiltration"]
+    noisy = [(a.threat_class, a.src_ip) for a in alerts]
     assert not noisy, f"benign traffic produced {noisy}"
 
 
@@ -335,6 +338,28 @@ def test_udp_reflection_amplification_detected():
     dets = d.evaluate(2.0)
     assert dets, "amplification flood not detected"
     assert dets[0].evidence["attack_kind"] == "udp_reflection_amplification"
+
+
+def test_learned_exfil_uses_destination_locality():
+    """The learned exfil model's whole reason to exist: a nightly backup inverts
+    its byte ratio exactly like exfiltration, so no threshold on volume/ratio can
+    separate them. Take a real exfil window's features and flip ONLY
+    dst_external — same volume, same ratio, same concentration — and the score
+    must collapse below the threshold. That is the separation a hand-set
+    coefficient could never find and the model learned from labelled data."""
+    from prahari.detectors.exfil import ExfilDetector
+    d = ExfilDetector()
+    if d.model is None:
+        return                                  # clean checkout, heuristic fallback
+    external = {"out_in_ratio": 50.0, "deviation": 11.15, "log_bytes_out": 6.42,
+                "dst_concentration": 1.0, "dst_novelty": 0.0, "dst_external": 1.0,
+                "out_share": 1.0, "n_flows": 3.0}
+    internal = dict(external, dst_external=0.0)      # identical, but to an internal host
+    p_ext = d.model.predict_proba(external)
+    p_int = d.model.predict_proba(internal)
+    assert p_ext >= d.threshold, f"external exfil not flagged ({p_ext:.2f})"
+    assert p_int < d.threshold, f"internal upload wrongly flagged ({p_int:.2f})"
+    assert p_ext - p_int > 0.5
 
 
 def test_read_only_selftest_passes():

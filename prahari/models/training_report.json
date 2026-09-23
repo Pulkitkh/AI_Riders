@@ -34,5 +34,23 @@
     "fp": 0,
     "fn": 0,
     "tn": 813
+  },
+  "exfil_train": {
+    "precision": 0.9524,
+    "recall": 1.0,
+    "f1": 0.9756,
+    "tp": 20,
+    "fp": 1,
+    "fn": 0,
+    "tn": 110
+  },
+  "exfil_held_out": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "tn": 30
   }
 }

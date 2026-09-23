@@ -123,7 +123,7 @@ Everything below runs. Nothing here is a mock, a stub, or a screenshot.
 | Labelled traffic generator, 7 classes, seeded and reproducible | working |
 | Streaming engine, windowed, bounded latency | working |
 | All six threat families detected | working |
-| Two fitted ML models (logistic regression, in-repo, no sklearn) | working |
+| Three fitted ML models (logistic regression, in-repo, no sklearn) | working |
 | Bigram language model over benign domains | working |
 | Calibration, deduplication, incident correlation | working |
 | SHA-256 hash-chained alert ledger with tamper detection | working |
@@ -154,14 +154,19 @@ Five captures with seeds and jitter settings **never used in training**.
 | DNS tunnelling | 1.000 | 1.000 | 1.000 |
 | Malware in TLS | 1.000 | 1.000 | 1.000 |
 | Recon / scanning | 1.000 | 1.000 | 1.000 |
-| **Data exfiltration** | **0.500** | 1.000 | 0.667 |
-| **macro F1** | | | **0.952** |
+| **Data exfiltration** | **1.000** | 0.800 | 0.889 |
+| **macro F1** | | | **0.984** |
 
-The exfiltration number is the honest one. Its five false positives are all the
-same host — the nightly backup server, which genuinely inverts its
-outbound-to-inbound byte ratio. That is the hard negative the generator includes
-on purpose, and it is why `Fusion` takes a suppression set an operator populates
-on day one.
+Exfiltration is the honest one, and it is now a **learned** detector. The hard
+negative the generator includes on purpose is the nightly backup server, which
+inverts its outbound-to-inbound byte ratio exactly like exfiltration — no
+threshold on volume or ratio can separate the two. The fitted model separates
+them on one feature a hand-set coefficient could never exploit: **`dst_external`**
+— the backup sends its volume to an *internal* file server, real exfiltration
+leaves the network. That took exfil precision from 0.50 (five false positives,
+all that one host) to **1.00 with the backup no longer flagged**, trading a
+little recall (one missed window) for a queue an analyst can actually work. The
+benign-only negative control is now completely silent.
 
 **Alert volume: ~87 alerts/hour.** This is the metric a SOC lead actually cares
 about, and it is reported alongside recall because recall is useless if the
@@ -224,7 +229,7 @@ jitter range. The commit history shows both states.
 | DNS tunnelling | Query-name length, unique subdomains per parent, TXT/NULL share | Statistical |
 | Malware in TLS | **JA4 rarity**, self-signed certs, validity window, packet-size shape | Statistical, metadata only |
 | Recon / scanning | Fan-out across ports and hosts, unanswered-attempt ratio | Threshold + rules |
-| Data exfiltration | Out/in byte ratio vs the host's own EWMA baseline, destination novelty | Unsupervised baseline |
+| Data exfiltration | Out/in byte ratio vs the host's own EWMA baseline, **destination locality** (internal vs external), volume, concentration, novelty | Logistic regression (fitted) |
 
 Three of these deliberately use statistics rather than deep learning. For rate
 and fan-out problems a clean statistical detector is faster, explainable by
@@ -329,9 +334,12 @@ A prototype that oversells itself loses the viva. These are the gaps.
    fingerprint rarity and packet shape, and Encrypted Client Hello removes SNI
    visibility as it rolls out.
 
-4. **Exfiltration is genuinely weak** and is reported as such — it is positioned
-   as a ranked lead for analyst review, not an oracle, and its score is capped
-   below certainty in code (`SCORE_CEILING = 0.82`).
+4. **Exfiltration is the weakest signal** and is still positioned as a ranked
+   lead for analyst review, not an oracle — its score stays capped below
+   certainty in code (`SCORE_CEILING = 0.82`) even though it is now a fitted
+   model. Learning `dst_external` removed the whole class of backup-host false
+   positives, but a patient adversary moving modest volumes to a reputable
+   external cloud endpoint still looks much like an employee using that service.
 
 5. **~87 alerts/hour is too noisy for production.** The deduplication window
    needs tuning against real analyst feedback.

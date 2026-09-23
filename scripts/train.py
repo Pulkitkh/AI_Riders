@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from prahari.detectors.beacon import FEATURES as BEACON_FEATURES, BeaconDetector
 from prahari.detectors.dga import FEATURES as DGA_FEATURES
+from prahari.detectors.exfil import FEATURES as EXFIL_FEATURES, ExfilDetector
 from prahari.features import bigram_table, lexical_features
 from prahari.generate import ALL_ATTACKS, TrafficGenerator
 from prahari.model import MODEL_DIR, LogisticRegression
@@ -66,6 +67,56 @@ def beacon_dataset(flows):
         X.append(BeaconDetector.extract(fl, len(prevalence[(cap, dst)])))
         y.append(1 if sum(1 for f in fl if f.label == "c2_beaconing") > len(fl) / 2 else 0)
         ts.append(fl[0].ts)
+    return X, y, ts
+
+
+def exfil_dataset(flows, window: float = 60.0):
+    """Per (source, 60 s window): volume/ratio features, labelled by whether the
+    source is exfiltrating in that window.
+
+    The features are produced by driving the real ExfilDetector window by window
+    — same baseline EWMA, same novelty and gating — so a training sample is
+    exactly the vector inference will compute. `det._sink` collects every gated
+    window's features; the detector's own scoring is irrelevant here.
+    """
+    caps = defaultdict(list)
+    for f in flows:
+        caps[int(f.ts // 100_000)].append(f)
+
+    X, y, ts = [], [], []
+    for _, fl in caps.items():
+        fl.sort(key=lambda f: f.ts)
+        det = ExfilDetector()
+        det.model = None                       # feature extraction only
+        det._sink = []
+        win_start = fl[0].ts
+        window_flows: list = []
+        label: dict = defaultdict(lambda: [0, 0])      # src -> [exfil_tcp, tcp]
+
+        def flush(end: float) -> None:
+            det._sink.clear()
+            for f in window_flows:
+                det.observe(f)
+            det.evaluate(end)
+            for t_, src_, feats_ in det._sink:
+                mal, tot = label[src_]
+                y.append(1 if mal > tot / 2 else 0)
+                X.append(feats_)
+                ts.append(t_)
+            det.reset_window()
+            window_flows.clear()
+            label.clear()
+
+        for f in fl:
+            while f.ts >= win_start + window:
+                flush(win_start + window)
+                win_start += window
+            window_flows.append(f)
+            if f.proto == "tcp":
+                label[f.src_ip][1] += 1
+                if f.label == "data_exfiltration":
+                    label[f.src_ip][0] += 1
+        flush(win_start + window)
     return X, y, ts
 
 
@@ -152,6 +203,18 @@ def main() -> int:
     metrics["beacon_held_out"] = report(bea, Xh, yh, "beacon HELD-OUT captures")
     bea.save("beacon")
 
+    # -- exfiltration ---------------------------------------------------------
+    print("\nfitting data-exfiltration volume classifier ...")
+    Xtr, ytr, _ = exfil_dataset(train_flows)
+    Xh, yh, _ = exfil_dataset(held_flows)
+    print(f"  train {len(Xtr)} windows ({sum(ytr)} exfil) | "
+          f"held-out {len(Xh)} ({sum(yh)} exfil)")
+    exf = LogisticRegression(EXFIL_FEATURES, lr=0.4, epochs=800).fit(Xtr, ytr)
+    exf.choose_threshold(Xtr, ytr)
+    metrics["exfil_train"] = report(exf, Xtr, ytr, "exfil on training set")
+    metrics["exfil_held_out"] = report(exf, Xh, yh, "exfil HELD-OUT captures")
+    exf.save("exfil")
+
     (MODEL_DIR / "training_report.json").write_text(
         json.dumps(metrics, indent=2), encoding="utf-8")
     print("\n" + "=" * 62)
@@ -159,6 +222,7 @@ def main() -> int:
     print("learned weights (standardised features):")
     print("  DGA   ", {k: round(v, 2) for k, v in dga.w.items()})
     print("  beacon", {k: round(v, 2) for k, v in bea.w.items()})
+    print("  exfil ", {k: round(v, 2) for k, v in exf.w.items()})
     return 0
 
 

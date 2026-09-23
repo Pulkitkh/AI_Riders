@@ -124,14 +124,17 @@ python3 eval/evaluate.py
 > is generated. What it proves is that the pipeline is wired correctly end to
 > end, not that we will get 1.000 on your link."
 
-Then point at the false positives, which the tool prints by name:
+Then point at the hard negative we defeated with learning:
 
-> "Five false positives, all the same host, and we know exactly who it is: the
-> nightly backup server. It genuinely sends thirty megabytes out and receives
-> almost nothing back — the same signature as exfiltration. We put it in the
-> generator on purpose as a hard negative. An operator allowlists it on day one;
-> fusion takes a suppression set. 87 alerts an hour is still too noisy for a
-> real SOC and we say so in the README."
+> "The classic exfiltration false positive is the nightly backup server — it
+> sends tens of megabytes out and receives almost nothing back, the exact
+> signature of data theft. No threshold on volume or ratio can tell them apart.
+> So we made exfil a fitted model, and the feature that separates them is
+> destination locality: the backup uploads to an internal file server, real
+> exfiltration leaves the network. Exfil precision went from 0.50 to 1.00 and
+> the backup host no longer alerts. We traded one missed exfil window for it —
+> recall 0.80 — and we say so. ~83 alerts an hour is still too noisy for a real
+> SOC, and we say that too."
 
 ---
 
@@ -166,8 +169,9 @@ python3 scripts/make_pcap.py --out /tmp/clean.pcap --duration 300 --benign-only
 python3 -m prahari.cli live --pcap /tmp/clean.pcap
 ```
 
-1,187 benign flows, 62,589 packets, **one** alert — and it is the nightly backup
-host we deliberately planted as a hard negative. Nothing else fires.
+1,187 benign flows and **zero** alerts — including the nightly backup host we
+deliberately planted as a hard negative, which the learned exfil model now tells
+apart from real exfiltration. Nothing fires.
 
 ---
 

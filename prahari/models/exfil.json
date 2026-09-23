@@ -1,0 +1,44 @@
+{
+  "features": [
+    "out_in_ratio",
+    "deviation",
+    "log_bytes_out",
+    "dst_concentration",
+    "dst_novelty",
+    "dst_external",
+    "out_share",
+    "n_flows"
+  ],
+  "w": {
+    "out_in_ratio": 1.3794207435639192,
+    "deviation": -1.5831922052942626,
+    "log_bytes_out": 1.6630616702346865,
+    "dst_concentration": 0.04032814852376332,
+    "dst_novelty": -0.648632421287634,
+    "dst_external": 3.1104432880164747,
+    "out_share": 1.3605171263413,
+    "n_flows": -4.263938373611264
+  },
+  "b": -5.314045444747594,
+  "mu": {
+    "out_in_ratio": 29.18426871207773,
+    "deviation": 8.0065013012648,
+    "log_bytes_out": 6.483119212024927,
+    "dst_concentration": 0.9977927632049552,
+    "dst_novelty": 0.17557251908396945,
+    "dst_external": 0.816793893129771,
+    "out_share": 0.9466080962666173,
+    "n_flows": 4.152671755725191
+  },
+  "sigma": {
+    "out_in_ratio": 17.066519000851223,
+    "deviation": 10.202054971161092,
+    "log_bytes_out": 0.48021547279794163,
+    "dst_concentration": 0.006133179784452578,
+    "dst_novelty": 0.3819165440559041,
+    "dst_external": 0.38832038155581,
+    "out_share": 0.0632366344134655,
+    "n_flows": 1.3670478155091836
+  },
+  "threshold": 0.73
+}

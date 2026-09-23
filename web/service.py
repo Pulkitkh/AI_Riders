@@ -49,9 +49,10 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     },
     "benign": {
         "title": "Clean traffic (negative control)",
-        "blurb": "No attacks at all. The correct output is almost nothing — a "
-                 "detector that fires on this is worthless. One alert survives, "
-                 "and it is the backup host we planted as a hard negative.",
+        "blurb": "No attacks at all. The correct output is nothing — a detector "
+                 "that fires on this is worthless. Even the nightly-backup host "
+                 "we planted as a hard negative stays silent: the learned exfil "
+                 "model tells its internal bulk upload from real exfiltration.",
         "classes": set(),
         "duration": 1800,
         "seed": 99,
@@ -479,9 +480,11 @@ def metrics() -> dict:
             "correctly end to end — not that it scores this on your link.",
             "Six classes at 1.000 will not survive real traffic. Dictionary DGAs "
             "made of real words defeat our lexical features entirely.",
-            "87 alerts/hour is still too noisy for a production SOC queue.",
-            "The recurring false positive is the nightly backup host, planted on "
-            "purpose as a hard negative. An operator allowlists it on day one.",
+            "~83 alerts/hour is still too noisy for a production SOC queue.",
+            "The nightly-backup hard negative is no longer a false positive: the "
+            "learned exfil model separates its internal bulk upload from real "
+            "exfiltration on destination locality. The trade is one missed exfil "
+            "window (recall 0.80) for a queue with no backup-host noise.",
         ],
     }
 

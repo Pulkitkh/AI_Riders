@@ -1,6 +1,6 @@
 """A small logistic-regression implementation and score calibration.
 
-Two of the seven detectors (beaconing, DGA) use a fitted model rather than a
+Three of the seven detectors (beaconing, DGA, exfiltration) use a fitted model rather than a
 hand-set threshold. Keeping the implementation in-repo and dependency-free means
 the training procedure is inspectable, which is what constraint (e) of the
 problem statement asks for when it demands documentation of the training and
