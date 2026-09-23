@@ -113,6 +113,65 @@ start with `--iface lo`.
 > Firing the buttons is real packet injection on 127.0.0.0/8, which needs
 > `NET_RAW` too. If capture works, injection works.
 
+### Testing with a REAL external attack (the convincing test)
+
+This is the test that proves the system to a judge: deploy on a real server, then
+attack it from a **different machine** and watch it detect the attack live. Unlike
+the on-screen attack buttons (which craft packets on loopback), this is a genuine
+remote attack arriving on the server's real interface.
+
+**The one critical setting:** the sensor must watch the interface the attack
+arrives on — the public NIC, usually `eth0`, NOT `lo`:
+
+```bash
+# on the server
+sudo python3 -m web.server --live --iface eth0 --port 8000
+#   or, if installed via systemd, it is already on eth0 — just:
+#   sudo sed -i 's/IFACE=lo/IFACE=eth0/' /etc/systemd/system/prahari.service
+#   sudo systemctl daemon-reload && sudo systemctl restart prahari
+```
+
+**From your laptop (a different machine), scan the server:**
+
+```bash
+# with nmap, if you have it
+nmap -sT -p 1-1000 <server-public-ip>
+
+# or with the bundled scanner — no install, no nmap needed
+python3 scripts/scan.py <server-public-ip> 1 1000
+```
+
+Within a few seconds, the server's Live tab shows a **Recon scanning** alert whose
+source is your laptop's IP, with evidence like `distinct_ports=1000,
+unanswered_ratio=1.0`. Verified end to end: a real connect-scan produces exactly
+this alert.
+
+Other real attacks you can throw at it and see detected:
+
+| From your laptop | Detected as |
+|---|---|
+| `nmap -sT -p 1-1000 <ip>` or `python3 scripts/scan.py <ip> 1 1000` | Recon scanning |
+| `nmap -sT -T5 --min-parallelism 100 <ip>` (fast, wide) | Recon scanning + volumetric |
+| `for i in $(seq 300); do curl -s http://<ip>:8000/ & done` (request flood) | Volumetric |
+| a real beaconing client on a fixed interval to one host | C2 beaconing |
+
+**Two gotchas that will otherwise make it look like nothing happened:**
+
+1. **Open the ports in the cloud firewall / security group.** If the provider's
+   firewall drops the scan at the hypervisor, the packets never reach the NIC and
+   the sensor sees nothing. Allow the port range you are scanning (or scan ports
+   that are already open). On the VM itself, `ufw`/`iptables` dropping traffic is
+   fine — the packet still hits the NIC and the sensor sees it before the drop; it
+   is the *cloud* security group, upstream of the NIC, that must let it through.
+2. **Watch `eth0`, not `lo`.** The most common mistake: the sensor is still on
+   loopback from the demo, so it never sees the external scan. Check the interface
+   in the header of the Live tab (it shows the interface name).
+
+> Scan only a host you own or are authorised to test — here, your own server.
+> `scripts/scan.py` is an ordinary connect scan and needs no root.
+
+---
+
 ### Exposing it to the jury
 
 - **Same network:** just share `http://<vm-ip>:8000`.
