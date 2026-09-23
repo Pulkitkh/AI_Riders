@@ -221,11 +221,43 @@ def parse_dns(payload: bytes):
     }
 
 
-def parse_tls_client_hello(payload: bytes):
-    """SNI plus a JA3-style fingerprint, computed from the ClientHello.
+_TLS_VER = {0x0304: "13", 0x0303: "12", 0x0302: "11", 0x0301: "10", 0x0300: "s3"}
+
+
+def _ja4(transport, legacy_ver, ciphers, exts, sig_algs, sni, alpn, sup_vers):
+    """Build a JA4 fingerprint (FoxIO spec) from parsed ClientHello fields.
+
+    JA4 = JA4_a _ JA4_b _ JA4_c:
+      a — transport(t/q) + TLS version + SNI present(d/i) + cipher count +
+          extension count + first/last char of the first ALPN
+      b — 12 hex of SHA-256 over the SORTED cipher list (GREASE removed)
+      c — 12 hex of SHA-256 over the SORTED extensions (GREASE, SNI, ALPN
+          removed) + "_" + the signature algorithms in order
+    Sorting is what makes JA4 robust to the client shuffling its lists, which is
+    the weakness of JA3 that JA4 was designed to fix.
+    """
+    cs = [c for c in ciphers if c not in GREASE]
+    ex = [e for e in exts if e not in GREASE]
+    # highest offered TLS version comes from supported_versions when present
+    real = [v for v in sup_vers if v not in GREASE] or [legacy_ver]
+    ver = _TLS_VER.get(max(real), "00")
+    a = (transport + ver + ("d" if sni else "i")
+         + f"{min(len(cs), 99):02d}" + f"{min(len(ex), 99):02d}"
+         + (((alpn[0][:1] + alpn[0][-1:]) if alpn and alpn[0] else "00")))
+    b = (hashlib.sha256(",".join(f"{c:04x}" for c in sorted(cs)).encode())
+         .hexdigest()[:12] if cs else "000000000000")
+    ex_c = sorted(e for e in ex if e not in (0x0000, 0x0010))
+    c_src = ",".join(f"{e:04x}" for e in ex_c) + "_" + ",".join(f"{s:04x}" for s in sig_algs)
+    c = hashlib.sha256(c_src.encode()).hexdigest()[:12]
+    return f"{a}_{b}_{c}"
+
+
+def parse_tls_client_hello(payload: bytes, transport: str = "t"):
+    """SNI plus JA3 and JA4 fingerprints, computed from the ClientHello.
 
     The handshake is not encrypted, so cipher and extension lists are observable
-    in passing. Nothing here decrypts anything — constraint (b) holds.
+    in passing. Nothing here decrypts anything — constraint (b) holds. `transport`
+    is "t" for TLS-over-TCP and "q" for QUIC (JA4's first character).
     """
     if len(payload) < 45 or payload[0] != 0x16 or payload[5] != 0x01:
         return None
@@ -241,6 +273,7 @@ def parse_tls_client_hello(payload: bytes):
         comp_len = payload[off]; off += 1 + comp_len
 
         sni, exts, curves, formats = None, [], [], []
+        sig_algs, alpn, sup_vers = [], [], []
         if off + 2 <= len(payload):
             ext_total = struct.unpack("!H", payload[off:off + 2])[0]
             off += 2
@@ -261,6 +294,18 @@ def parse_tls_client_hello(payload: bytes):
                               for i in range(0, glen, 2)]
                 elif etype == 0x000b and len(body) >= 1:        # ec_point_formats
                     formats = list(body[1:1 + body[0]])
+                elif etype == 0x000d and len(body) >= 2:        # signature_algorithms
+                    slen = struct.unpack("!H", body[0:2])[0]
+                    sig_algs = [struct.unpack("!H", body[2 + i:4 + i])[0]
+                                for i in range(0, min(slen, len(body) - 2), 2)]
+                elif etype == 0x0010 and len(body) >= 3:        # ALPN
+                    o = 2
+                    while o < len(body):
+                        n = body[o]; alpn.append(body[o + 1:o + 1 + n].decode("ascii", "replace")); o += 1 + n
+                elif etype == 0x002b and len(body) >= 1:        # supported_versions
+                    o = 1
+                    while o + 1 < len(body):
+                        sup_vers.append(struct.unpack("!H", body[o:o + 2])[0]); o += 2
 
         ja3 = ",".join([
             str(ver),
@@ -271,7 +316,9 @@ def parse_tls_client_hello(payload: bytes):
         ])
         return {"sni": sni,
                 "ja3": ja3,
-                "ja3_hash": hashlib.md5(ja3.encode()).hexdigest()}
+                "ja3_hash": hashlib.md5(ja3.encode()).hexdigest(),
+                "ja4": _ja4(transport, ver, ciphers, exts, sig_algs, sni, alpn, sup_vers),
+                "alpn": alpn}
     except (struct.error, IndexError):
         return None
 
@@ -357,6 +404,39 @@ def parse_tls_certificate(payload: bytes):
                 clen = int.from_bytes(msg[3:6], "big")
                 return parse_x509(msg[6:6 + clen])
     return None
+
+
+def parse_quic_initial(payload: bytes):
+    """Recognise a QUIC Initial packet without decrypting it.
+
+    QUIC rides on UDP and carries its ClientHello inside a header-protected
+    Initial packet, so a metadata sensor must at least SEE that a flow is QUIC.
+    The long-header form, the fixed bit, and the version are all public — no key
+    material is needed to identify the packet as QUIC. That is what this does:
+    it makes QUIC visible so the flow is labelled and the encrypted-session
+    detector can score it on packet shape and destination rarity. Extracting the
+    ClientHello inside (a "q" JA4) needs the Initial's header protection removed
+    with keys derived from a public salt; that is the documented next step and is
+    out of scope for pure recognition, which is what the problem statement's
+    "TLS/QUIC metadata" needs here.
+    """
+    if len(payload) < 7:
+        return None
+    b0 = payload[0]
+    if (b0 & 0xC0) != 0xC0:                 # long-header form + fixed bit set
+        return None
+    version = struct.unpack("!I", payload[1:5])[0]
+    dcid_len = payload[5]
+    if dcid_len > 20 or 6 + dcid_len > len(payload):
+        return None
+    known = (version == 0x00000001                      # QUIC v1 (RFC 9000)
+             or (version & 0xFF000000) == 0xFF000000    # IETF drafts
+             or (version & 0x0F0F0F0F) == 0x0A0A0A0A)   # GREASE versions (RFC 9287)
+    if not known:
+        return None
+    ptype = (b0 & 0x30) >> 4                # 0 = Initial in v1
+    return {"version": version, "is_initial": ptype == 0,
+            "marker": f"quic-v{version & 0xFFFF:x}"}
 
 
 # =============================================================================
@@ -464,15 +544,27 @@ def flows_from_capture(path: str | Path, verbose: bool = False) -> list[Flow]:
                         f.dns_rcode = dns["rcode"]
             elif pname == "tcp" and len(app) > 5 and app[0] == 0x16 and app[1] == 0x03:
                 if f.tls_ja4 is None:
-                    tls = parse_tls_client_hello(app)
+                    tls = parse_tls_client_hello(app, transport="t")
                     if tls:
-                        f.tls_ja4 = tls["ja3_hash"]   # real fingerprint, computed here
+                        f.tls_ja4 = tls["ja4"]        # real JA4, computed here
+                        f.tls_ja3 = tls["ja3_hash"]   # JA3 kept alongside
                         f.tls_sni = tls["sni"]
                 if f.tls_cert_days is None:
                     cert = parse_tls_certificate(app)
                     if cert:
                         f.tls_self_signed = cert["self_signed"]
                         f.tls_cert_days = cert["cert_days"]
+            elif pname == "udp" and dport == 443 and f.tls_ja4 is None:
+                q = parse_quic_initial(app)
+                if q:
+                    # QUIC recognised without decryption: the long-header Initial
+                    # is identifiable from its public fields alone. We record the
+                    # transport and version so QUIC traffic is not invisible; the
+                    # ClientHello inside is header-protected, so its JA4 (a "q…"
+                    # fingerprint) is future work, and the detector scores QUIC on
+                    # packet shape and destination rarity meanwhile.
+                    f.tls_ja4 = q["marker"]
+                    f.tls_sni = None
 
     done.extend(a.flow for a in live.values())
     done.sort(key=lambda x: x.ts)

@@ -310,13 +310,16 @@ A prototype that oversells itself loses the viva. These are the gaps.
    the lexical features entirely. Treat these numbers as "the pipeline is
    wired correctly end to end", not as a claim about field performance.
 
-3. **JA3, not JA4, and TLS 1.3 hides the certificate.** The reader computes a
-   real JA3 — the older, widely-tabulated fingerprint — from the ClientHello;
-   JA4+ is a substitution of the same parsed fields and is not done yet.
-   Certificate facts (self-signed, validity window) are readable only through
-   TLS 1.2, because TLS 1.3 encrypts the Certificate message. On a 1.3-only
-   link the encrypted-malware detector falls back to fingerprint rarity and
-   packet shape, which is weaker, and Encrypted Client Hello removes SNI
+3. **JA3 and JA4 both computed; QUIC recognised; TLS 1.3 hides the certificate.**
+   The reader computes a real **JA3** and a real **JA4** (FoxIO spec — sorted
+   cipher/extension lists, so it survives the client shuffling that defeats JA3)
+   from the ClientHello, and **recognises QUIC** long-header Initial packets from
+   their public fields without any decryption. Extracting the ClientHello *inside*
+   a QUIC Initial (a "q…" JA4) needs the Initial's header protection removed with
+   a public salt and is the documented next step. Certificate facts (self-signed,
+   validity window) are readable only through TLS 1.2, because TLS 1.3 encrypts
+   the Certificate message; on a 1.3-only link the detector falls back to
+   fingerprint rarity and packet shape, and Encrypted Client Hello removes SNI
    visibility as it rolls out.
 
 4. **Exfiltration is genuinely weak** and is reported as such — it is positioned

@@ -72,6 +72,7 @@ class Flow:
     dns_qtype: str | None = None
     dns_rcode: str | None = None
     tls_ja4: str | None = None
+    tls_ja3: str | None = None
     tls_sni: str | None = None
     tls_self_signed: bool = False
     tls_cert_days: int | None = None

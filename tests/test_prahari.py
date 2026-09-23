@@ -159,6 +159,33 @@ def test_ja3_is_computed_not_copied():
     assert len(a["ja3_hash"]) == 32
 
 
+def test_ja4_is_spec_formatted_and_discriminates():
+    """A real JA4: t + version + d/i + counts + ALPN _ hash _ hash, and it must
+    change when the cipher/extension list changes (JA3's shuffle weakness fixed)."""
+    import re
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from make_pcap import (tls_client_hello, DEFAULT_CIPHERS, DEFAULT_EXTS,
+                           DEFAULT_CURVES, ODD_CIPHERS, ODD_EXTS)
+    from prahari.pcapread import parse_tls_client_hello
+    a = parse_tls_client_hello(tls_client_hello("x.example", DEFAULT_CIPHERS, DEFAULT_EXTS, DEFAULT_CURVES))
+    b = parse_tls_client_hello(tls_client_hello(None, ODD_CIPHERS, ODD_EXTS, [0x17, 0x18]))
+    assert re.match(r"^[tq]\d{2}[di]\d{2}\d{2}.._[0-9a-f]{12}_[0-9a-f]{12}$", a["ja4"])
+    assert a["ja4"][3] == "d" and b["ja4"][3] == "i"      # SNI present vs absent
+    assert a["ja4"] != b["ja4"]
+
+
+def test_quic_initial_recognised_without_decryption():
+    """QUIC must not be invisible: the long-header Initial is identified from
+    public fields alone, no key material."""
+    import struct
+    from prahari.pcapread import parse_quic_initial
+    pkt = bytes([0xC3]) + struct.pack("!I", 1) + bytes([8]) + bytes(range(8)) + bytes([0]) + b"\x00" * 20
+    q = parse_quic_initial(pkt)
+    assert q and q["is_initial"] and q["version"] == 1 and q["marker"] == "quic-v1"
+    # a TLS-over-TCP record must NOT be mistaken for QUIC
+    assert parse_quic_initial(b"\x16\x03\x01\x00\x40\x01") is None
+
+
 def test_self_signed_certificate_is_recognised():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
     from make_pcap import tls_server_certificate
