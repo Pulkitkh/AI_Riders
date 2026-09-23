@@ -1,4 +1,4 @@
-.PHONY: demo selftest replay live pcap dash test eval sweep train bench clean
+.PHONY: demo selftest replay live pcap quic dash test eval sweep train bench clean
 
 demo:   ## everything a judge needs to see (Windows: python scripts/demo.py)
 	@python3 scripts/demo.py
@@ -14,6 +14,9 @@ pcap:   ## write a genuine wire-format capture to data/demo.pcap
 
 live: pcap   ## run the pipeline on real packet bytes
 	@python3 -m prahari.cli live --pcap data/demo.pcap
+
+quic:   ## decrypt real QUIC v1 Initials with only the public RFC 9001 salt
+	@python3 scripts/quic_demo.py
 
 dash:
 	@python3 -m web.server --port 8000

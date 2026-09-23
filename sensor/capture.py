@@ -23,6 +23,7 @@ from prahari.pcapread import (parse_dns, parse_ipv4, parse_tcp,
                               parse_quic_initial, parse_tls_certificate,
                               parse_tls_client_hello, parse_udp,
                               strip_link)
+from prahari.quic_crypto import decrypt_client_hello as decrypt_quic_client_hello
 from prahari.schema import Flow
 
 ETH_P_ALL = 0x0003
@@ -154,9 +155,17 @@ class FlowAssembler:
                         f.tls_self_signed = cert["self_signed"]
                         f.tls_cert_days = cert["cert_days"]
             elif pname == "udp" and dport == 443 and f.tls_ja4 is None:
-                q = parse_quic_initial(app)          # QUIC recognised, not decrypted
-                if q:
-                    f.tls_ja4 = q["marker"]
+                rec = decrypt_quic_client_hello(app)  # public-salt Initial → real q-JA4
+                if rec:
+                    tls = parse_tls_client_hello(rec, transport="q")
+                    if tls:
+                        f.tls_ja4 = tls["ja4"]
+                        f.tls_ja3 = tls["ja3_hash"]
+                        f.tls_sni = tls["sni"]
+                if f.tls_ja4 is None:
+                    q = parse_quic_initial(app)       # fallback: recognise as QUIC
+                    if q:
+                        f.tls_ja4 = q["marker"]
 
     def expire(self, now: float) -> list[Flow]:
         """Return and drop flows that are complete.

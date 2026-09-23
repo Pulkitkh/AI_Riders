@@ -1,7 +1,7 @@
 {
   "per_class": {
-    "recon_scanning": {
-      "tp": 5,
+    "c2_beaconing": {
+      "tp": 15,
       "fp": 0,
       "fn": 0
     },
@@ -10,27 +10,27 @@
       "fp": 5,
       "fn": 0
     },
-    "encrypted_malware": {
-      "tp": 5,
-      "fp": 0,
-      "fn": 0
-    },
     "dns_tunnelling": {
       "tp": 5,
       "fp": 0,
       "fn": 0
     },
-    "dga_resolution": {
+    "encrypted_malware": {
       "tp": 5,
       "fp": 0,
       "fn": 0
     },
-    "c2_beaconing": {
-      "tp": 15,
+    "volumetric_ddos": {
+      "tp": 5,
       "fp": 0,
       "fn": 0
     },
-    "volumetric_ddos": {
+    "recon_scanning": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0
+    },
+    "dga_resolution": {
       "tp": 5,
       "fp": 0,
       "fn": 0

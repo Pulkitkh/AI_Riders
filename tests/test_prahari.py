@@ -186,6 +186,44 @@ def test_quic_initial_recognised_without_decryption():
     assert parse_quic_initial(b"\x16\x03\x01\x00\x40\x01") is None
 
 
+def test_quic_crypto_matches_rfc9001_known_answers():
+    """The Initial keys are derived from PUBLIC values, so they must equal the
+    exact vectors published in RFC 9001 Appendix A.1 — and AES the FIPS-197 one.
+    This is what proves we decrypt with no secret, correctly."""
+    from prahari.quic_crypto import (_initial_secrets, _encrypt_block,
+                                     _expand_key, INITIAL_SALT_V1)
+    key, iv, hp = _initial_secrets(bytes.fromhex("8394c8f03e515708"), INITIAL_SALT_V1)
+    assert key.hex() == "1f369613dd76d5467730efcbe3b1a22d"
+    assert iv.hex() == "fa044b2f42a3fd3b46fb255c"
+    assert hp.hex() == "9f50449e04a0e810283a1e9933adedd2"
+    ct = _encrypt_block(_expand_key(bytes.fromhex("000102030405060708090a0b0c0d0e0f")),
+                        bytes.fromhex("00112233445566778899aabbccddeeff"))
+    assert ct.hex() == "69c4e0d86a7b0430d8cdb78070b4c55a"
+
+
+def test_quic_initial_is_decrypted_to_a_real_ja4():
+    """End to end: a genuine QUIC Initial is sealed, then decrypted with only the
+    public salt, and the ClientHello inside yields a spec 'q…' JA4 plus its SNI —
+    no key material, exactly as constraint (b) requires."""
+    import re
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from make_pcap import tls_client_hello, DEFAULT_CIPHERS, DEFAULT_EXTS, DEFAULT_CURVES
+    from prahari.quic_crypto import build_initial, decrypt_client_hello
+    from prahari.pcapread import parse_tls_client_hello
+
+    record = tls_client_hello("chat.quic.example", DEFAULT_CIPHERS, DEFAULT_EXTS, DEFAULT_CURVES)
+    handshake = record[5:]                                  # strip the TLS record header
+    pkt = build_initial(bytes.fromhex("8394c8f03e515708"), handshake)
+    rec = decrypt_client_hello(pkt)
+    assert rec is not None
+    tls = parse_tls_client_hello(rec, transport="q")
+    assert tls["sni"] == "chat.quic.example"
+    assert tls["ja4"].startswith("q")                       # QUIC transport prefix
+    assert re.match(r"^q\d{2}[di]\d{2}\d{2}.._[0-9a-f]{12}_[0-9a-f]{12}$", tls["ja4"])
+    # a non-Initial / non-QUIC datagram must decrypt to nothing, not crash
+    assert decrypt_client_hello(b"\x16\x03\x01\x00\x05hello") is None
+
+
 def test_self_signed_certificate_is_recognised():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
     from make_pcap import tls_server_certificate

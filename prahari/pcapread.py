@@ -23,6 +23,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Iterator
 
+from .quic_crypto import decrypt_client_hello as decrypt_quic_client_hello
 from .schema import Flow
 
 # --- link types --------------------------------------------------------------
@@ -414,11 +415,11 @@ def parse_quic_initial(payload: bytes):
     The long-header form, the fixed bit, and the version are all public — no key
     material is needed to identify the packet as QUIC. That is what this does:
     it makes QUIC visible so the flow is labelled and the encrypted-session
-    detector can score it on packet shape and destination rarity. Extracting the
-    ClientHello inside (a "q" JA4) needs the Initial's header protection removed
-    with keys derived from a public salt; that is the documented next step and is
-    out of scope for pure recognition, which is what the problem statement's
-    "TLS/QUIC metadata" needs here.
+    detector can score it on packet shape and destination rarity. This is the
+    lightweight fallback: when the packet IS a decryptable v1/draft-29 Initial,
+    the caller first uses `quic_crypto.decrypt_client_hello` to pull a real "q…"
+    JA4 out of the (publicly keyed) Initial; this recognition path only runs when
+    that fails — a later packet, or a version whose salt we do not carry.
     """
     if len(payload) < 7:
         return None
@@ -555,16 +556,25 @@ def flows_from_capture(path: str | Path, verbose: bool = False) -> list[Flow]:
                         f.tls_self_signed = cert["self_signed"]
                         f.tls_cert_days = cert["cert_days"]
             elif pname == "udp" and dport == 443 and f.tls_ja4 is None:
-                q = parse_quic_initial(app)
-                if q:
-                    # QUIC recognised without decryption: the long-header Initial
-                    # is identifiable from its public fields alone. We record the
-                    # transport and version so QUIC traffic is not invisible; the
-                    # ClientHello inside is header-protected, so its JA4 (a "q…"
-                    # fingerprint) is future work, and the detector scores QUIC on
-                    # packet shape and destination rarity meanwhile.
-                    f.tls_ja4 = q["marker"]
-                    f.tls_sni = None
+                rec = decrypt_quic_client_hello(app)
+                if rec:
+                    # QUIC Initial decrypted with the PUBLIC salt — no secret is
+                    # ever held (see prahari.quic_crypto). The ClientHello inside
+                    # yields a real "q…" JA4, exactly like the TCP path.
+                    tls = parse_tls_client_hello(rec, transport="q")
+                    if tls:
+                        f.tls_ja4 = tls["ja4"]
+                        f.tls_ja3 = tls["ja3_hash"]
+                        f.tls_sni = tls["sni"]
+                if f.tls_ja4 is None:
+                    q = parse_quic_initial(app)
+                    if q:
+                        # Not a decryptable Initial (a later packet, an unknown
+                        # version): fall back to recognising it as QUIC so the
+                        # flow is not invisible and the detector still scores it
+                        # on packet shape and destination rarity.
+                        f.tls_ja4 = q["marker"]
+                        f.tls_sni = None
 
     done.extend(a.flow for a in live.values())
     done.sort(key=lambda x: x.ts)

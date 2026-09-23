@@ -11,7 +11,10 @@ An AI/ML pipeline that ingests a one-directional copy of IP traffic inside an
 isolated monitoring enclave and detects, classifies and scores six families of
 cyber threat in near real time — using only passively observed packets, flow
 records and derived metadata, with **no return path to the production network,
-no active probing, and no payload decryption**.
+no active probing, and no session-payload decryption**. (The one cryptographic
+operation anywhere is unwrapping a QUIC *Initial* with its published RFC 9001
+salt — public keying, no secret — which reads a handshake that is cleartext over
+TCP anyway; no session key is ever derived. See constraint b below.)
 
 ---
 
@@ -245,7 +248,7 @@ CORRELATED INCIDENTS
 | # | Constraint | Proof |
 |---|---|---|
 | a | **Read-only ingest** | `python3 -m prahari.cli selftest` parses the AST of every module in the detection path and fails if any imports `socket`, `requests`, `urllib`, `httpx`, `scapy` or similar. The dashboard server is deliberately *outside* that path. |
-| b | **No payload decryption** | No key material is ever provisioned. `Flow.pkt_sizes` holds sizes and directions; there is no field anywhere that holds payload bytes. |
+| b | **No session-payload decryption** | No *session* key material is ever provisioned or derived; `Flow.pkt_sizes` holds sizes and directions, and no field anywhere holds session-payload bytes. The sole crypto operation is unwrapping a QUIC Initial with the **public** RFC 9001 salt (`quic_crypto.py`) — the same handshake ClientHello that is sent in the clear over TCP — to read its JA4/SNI. It reads a handshake, never a session: no 1-RTT key is computed, and the AEAD tag is not even verified. |
 | c | **Streaming, not batch** | `Engine.push()` processes one flow at a time and closes windows as the clock advances. `bench` reports measured p50/p95/p99. |
 | d | **Stated throughput** | 14,387 flows/sec sustained, hardware and method in `cli.py bench`. |
 | e | **Standardised alert schema** | `schema.Alert.to_record()` — versioned JSON, ECS-aligned field naming, with timestamp, flow ID, threat class, calibrated confidence, evidence, model version and hash-chain position. |
@@ -310,13 +313,17 @@ A prototype that oversells itself loses the viva. These are the gaps.
    the lexical features entirely. Treat these numbers as "the pipeline is
    wired correctly end to end", not as a claim about field performance.
 
-3. **JA3 and JA4 both computed; QUIC recognised; TLS 1.3 hides the certificate.**
+3. **JA3 and JA4 over both TCP and QUIC; TLS 1.3 hides the certificate.**
    The reader computes a real **JA3** and a real **JA4** (FoxIO spec — sorted
    cipher/extension lists, so it survives the client shuffling that defeats JA3)
-   from the ClientHello, and **recognises QUIC** long-header Initial packets from
-   their public fields without any decryption. Extracting the ClientHello *inside*
-   a QUIC Initial (a "q…" JA4) needs the Initial's header protection removed with
-   a public salt and is the documented next step. Certificate facts (self-signed,
+   from the ClientHello. For **QUIC** it goes further than recognition: a v1/
+   draft-29 Initial is decrypted with the *public* RFC 9001 salt (pure-Python
+   AES-128 + HKDF, no OpenSSL, no session secret — `prahari/quic_crypto.py`), and
+   the ClientHello inside yields a real **"q…" JA4** with SNI, exactly like the
+   TCP path. `make quic` shows it end to end; the RFC 9001 Appendix A.1 key
+   vectors and a FIPS-197 AES vector are asserted in the test suite. A later
+   packet or an unknown version falls back to recognising the flow as QUIC so it
+   is never invisible. Certificate facts (self-signed,
    validity window) are readable only through TLS 1.2, because TLS 1.3 encrypts
    the Certificate message; on a 1.3-only link the detector falls back to
    fingerprint rarity and packet shape, and Encrypted Client Hello removes SNI
@@ -361,7 +368,8 @@ prahari/
   fusion.py        dedupe, correlate into incidents, severity
   ledger.py        SHA-256 hash-chained append-only alert store
   selftest.py      read-only constraint proof
-  pcapread.py      pcap/pcapng -> Flow: JA3/JA4 + X.509 + QUIC recognition
+  pcapread.py      pcap/pcapng -> Flow: JA3/JA4 (TCP + QUIC) + X.509
+  quic_crypto.py   pure-Python QUIC Initial decrypt (public salt) -> q-JA4
   netflow.py       NetFlow v5 -> Flow: exported flow-record ingest
   cli.py           live / replay / selftest / bench
   detectors/       one module per threat family
