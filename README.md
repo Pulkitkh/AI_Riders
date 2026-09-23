@@ -69,7 +69,7 @@ No capture handy, and no root on the machine in front of you? Build one:
 ```bash
 python3 scripts/make_pcap.py --out data/demo.pcap --duration 1800
 python3 -m prahari.cli live --pcap data/demo.pcap
-python3 -m prahari.api --pcap data/demo.pcap   # the same capture, in the dashboard
+python3 -m web.server --pcap data/demo.pcap    # the same capture, in the dashboard
 ```
 
 **On Windows**, use `python` (or `py -3`) instead of `python3`, and skip `make`
@@ -99,9 +99,9 @@ git clone <this repo> && cd AI_Riders
 
 python3 -m prahari.cli selftest      # prove the read-only constraints
 python3 -m prahari.cli replay        # replay a capture, watch alerts appear
-python3 -m prahari.api               # dashboard on http://localhost:8000
+python3 -m web.server               # dashboard on http://localhost:8000
 
-python3 tests/test_prahari.py        # 12 tests
+python3 tests/test_prahari.py        # 25 engine tests
 python3 eval/evaluate.py             # held-out evaluation
 python3 eval/jitter_sweep.py         # the headline experiment
 python3 scripts/train.py             # refit the models from scratch
@@ -361,8 +361,8 @@ prahari/
   fusion.py        dedupe, correlate into incidents, severity
   ledger.py        SHA-256 hash-chained append-only alert store
   selftest.py      read-only constraint proof
-  pcapread.py      pcap/pcapng -> Flow: real packet parsing, no scapy, no dpkt
-  api.py           dashboard server (outside the detection path, on purpose)
+  pcapread.py      pcap/pcapng -> Flow: JA3/JA4 + X.509 + QUIC recognition
+  netflow.py       NetFlow v5 -> Flow: exported flow-record ingest
   cli.py           live / replay / selftest / bench
   detectors/       one module per threat family
 sensor/
@@ -376,14 +376,13 @@ web/
   build.py         precomputes the demo datasets
   public/          the SOC dashboard (one HTML, one CSS, one JS; no CDN)
 api/index.py       Vercel serverless entrypoint (stateless endpoints)
-dashboard/         earlier standalone SOC view (replaced by web/public)
 eval/              held-out evaluation, jitter sweep, degraded-mode measurement
 scripts/train.py      fits both models and the bigram table
 scripts/make_pcap.py  writes a genuine wire-format .pcap (round-trip test + demo)
 scripts/demo.py       cross-platform `make demo`, for machines without make
 docs/DEMO.md       the runbook for presenting this
 docs/DEPLOY.md     live-sensor and static-viewer deployment
-tests/             36 tests (21 engine + 15 web)
+tests/             40 tests (25 engine + 15 web)
 ```
 
 ---

@@ -122,6 +122,52 @@ class LiveSensor:
             self.bus.publish("status", self.status())
             return True
 
+    def replay_pcap(self, path, speed: float = 60.0) -> bool:
+        """Replay a capture file into the live dashboard.
+
+        Reads a pcap into flows and pushes them through the same engine and bus
+        the live tap uses, time-scaled so a 30-minute capture animates in about
+        30 seconds. The dashboard cannot tell this from a live feed — it is the
+        same pipeline — which is the point: replay and live differ only in where
+        the flows come from.
+        """
+        from prahari.pcapread import flows_from_capture
+        import threading, time as _t
+        try:
+            flows = flows_from_capture(path)
+        except OSError:
+            return False
+        if not flows:
+            return False
+
+        def worker():
+            with self._lock:
+                self._running = True
+                self.started_at = _t.time()
+            self.bus.publish("status", self.status())
+            t_prev = flows[0].ts
+            for f in flows:
+                if not self._running:
+                    break
+                gap = (f.ts - t_prev) / speed if speed > 0 else 0
+                if gap > 0.002:
+                    _t.sleep(min(gap, 0.2))
+                t_prev = f.ts
+                self.flows_total += 1
+                self.engine.push(f)
+                if self.flows_total % 40 == 0:
+                    self.engine.advance(_t.time())
+                    self._flush_tick()
+            self.engine.advance(flows[-1].ts + self.window)
+            self._flush_tick()
+            with self._lock:
+                self._running = False
+            self.bus.publish("status", self.status())
+
+        self._thread = threading.Thread(target=worker, daemon=True)
+        self._thread.start()
+        return True
+
     def stop(self) -> None:
         with self._lock:
             self._running = False

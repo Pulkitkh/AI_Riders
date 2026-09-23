@@ -20,7 +20,8 @@ from dataclasses import replace
 from typing import Callable, Iterator
 
 from prahari.pcapread import (parse_dns, parse_ipv4, parse_tcp,
-                              parse_tls_certificate, parse_tls_client_hello, parse_udp,
+                              parse_quic_initial, parse_tls_certificate,
+                              parse_tls_client_hello, parse_udp,
                               strip_link)
 from prahari.schema import Flow
 
@@ -142,15 +143,20 @@ class FlowAssembler:
                         f.dns_rcode = dns["rcode"]
             elif pname == "tcp" and len(app) > 5 and app[0] == 0x16 and app[1] == 0x03:
                 if f.tls_ja4 is None:
-                    tls = parse_tls_client_hello(app)
+                    tls = parse_tls_client_hello(app, transport="t")
                     if tls:
-                        f.tls_ja4 = tls["ja3_hash"]
+                        f.tls_ja4 = tls["ja4"]        # real JA4
+                        f.tls_ja3 = tls["ja3_hash"]
                         f.tls_sni = tls["sni"]
                 if f.tls_cert_days is None:
                     cert = parse_tls_certificate(app)
                     if cert:
                         f.tls_self_signed = cert["self_signed"]
                         f.tls_cert_days = cert["cert_days"]
+            elif pname == "udp" and dport == 443 and f.tls_ja4 is None:
+                q = parse_quic_initial(app)          # QUIC recognised, not decrypted
+                if q:
+                    f.tls_ja4 = q["marker"]
 
     def expire(self, now: float) -> list[Flow]:
         """Return and drop flows that are complete.

@@ -92,7 +92,7 @@ HIGH  c2_beaconing  conf 1.00  10.42.1.19 → 203.0.113.44
 ### Window 3 — the dashboard (60 seconds)
 
 ```bash
-python3 -m prahari.api --pcap data/demo.pcap --port 8000
+python3 -m web.server --pcap data/demo.pcap --port 8000
 ```
 
 Open `http://localhost:8000`. The source chip in the header reads **real
@@ -239,7 +239,7 @@ pushes on a claim, you reach for a terminal instead of a slide.
 |---|---|
 | Building the capture is slow | ~25s, and it writes 140 MB. Build it beforehand and keep the file. |
 | `data/demo.pcap` missing on the demo machine | `python3 scripts/make_pcap.py --out data/demo.pcap --duration 1800` rebuilds it deterministically — same seed, same bytes. |
-| Dashboard port in use | `python3 -m prahari.api --pcap data/demo.pcap --port 8111` |
+| Dashboard port in use | `python3 -m web.server --pcap data/demo.pcap --port 8111` |
 | No colour in the terminal | Harmless; it is ANSI escapes. |
 | `python3` is 3.8 | The code uses `X | Y` type syntax under `from __future__ import annotations`; 3.10+ is required. Carry a 3.11 machine. |
 | `make: command not found` (Windows) | Use `python scripts\demo.py`. `make` is a convenience, never a requirement. |

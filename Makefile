@@ -16,7 +16,7 @@ live: pcap   ## run the pipeline on real packet bytes
 	@python3 -m prahari.cli live --pcap data/demo.pcap
 
 dash:
-	@python3 -m prahari.api --port 8000
+	@python3 -m web.server --port 8000
 
 test:
 	@python3 tests/test_prahari.py

@@ -3,6 +3,7 @@ the live sensor the hosted viewer cannot run.
 
     python3 -m web.server --port 8000            # replay + static viewer
     sudo python3 -m web.server --live --iface lo # add the real-time sensor
+    python3 -m web.server --pcap demo.pcap       # replay a capture in the dashboard
 
 The stateless endpoints (scenarios, replay, selftest, ledger, metrics) are
 served by `web.router`, exactly as they are on Vercel, so that deployment and
@@ -218,6 +219,7 @@ def main(argv=None) -> int:
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--iface", default="lo", help="interface to tap in live mode")
     ap.add_argument("--live", action="store_true", help="start the sensor at boot")
+    ap.add_argument("--pcap", help="replay this capture into the live dashboard at boot")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     SENSOR_IFACE = a.iface
@@ -227,7 +229,13 @@ def main(argv=None) -> int:
     srv.daemon_threads = True
 
     print(f"PRAHARI   http://{a.host}:{a.port}")
-    if a.live:
+    if a.pcap:
+        s = _get_sensor()
+        if s.replay_pcap(a.pcap):
+            print(f"replaying {a.pcap} into the live dashboard")
+        else:
+            print(f"could not replay {a.pcap} (empty or unreadable)")
+    elif a.live:
         s = _get_sensor(autostart=True)
         ok, why = s.available(a.iface if a.iface != "any" else None)
         print(f"live sensor on {a.iface}: {'RUNNING' if s.running() else 'unavailable — ' + why}")

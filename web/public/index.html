@@ -68,7 +68,7 @@
 
 <main>
   <!-- ===================== OVERVIEW ===================== -->
-  <section id="tab-overview" class="tabpane">
+  <section id="tab-overview" class="tabpane" role="tabpanel" tabindex="0" aria-label="overview">
     <div class="hero card">
       <div class="hero-main">
         <span class="hero-badge"><svg class="ico ico-lg"><use href="#i-shield-check"/></svg></span>
@@ -115,7 +115,7 @@
   </section>
 
   <!-- ===================== LIVE ===================== -->
-  <section id="tab-live" class="tabpane" hidden>
+  <section id="tab-live" class="tabpane" role="tabpanel" tabindex="0" aria-label="live" hidden>
     <div id="live-unavailable" class="banner" hidden></div>
 
     <!-- at-a-glance status for a non-expert -->
@@ -207,7 +207,7 @@
   </section>
 
   <!-- ===================== REPLAY ===================== -->
-  <section id="tab-replay" class="tabpane" hidden>
+  <section id="tab-replay" class="tabpane" role="tabpanel" tabindex="0" aria-label="replay" hidden>
     <div class="controls">
       <div class="field">
         <label for="scenario">Scenario</label>
@@ -247,7 +247,7 @@
   </section>
 
   <!-- ===================== DEGRADED ===================== -->
-  <section id="tab-degraded" class="tabpane" hidden>
+  <section id="tab-degraded" class="tabpane" role="tabpanel" tabindex="0" aria-label="degraded" hidden>
     <div class="card"><div class="body">
       <p style="margin-top:0"><b>What "unidirectional" means here.</b> We assume the diode carries a TAP copy of
         <b>both</b> directions of each flow. The stricter reading — only one direction ever visible — breaks
@@ -266,7 +266,7 @@
   </section>
 
   <!-- ===================== METRICS ===================== -->
-  <section id="tab-metrics" class="tabpane" hidden>
+  <section id="tab-metrics" class="tabpane" role="tabpanel" tabindex="0" aria-label="metrics" hidden>
     <div class="split">
       <div class="card">
         <h2>Held-out evaluation</h2>
@@ -290,7 +290,7 @@
   </section>
 
   <!-- ===================== LEDGER ===================== -->
-  <section id="tab-ledger" class="tabpane" hidden>
+  <section id="tab-ledger" class="tabpane" role="tabpanel" tabindex="0" aria-label="ledger" hidden>
     <div class="card"><div class="body">
       <p style="margin-top:0">Every alert is appended to a <b>SHA-256 hash-chained</b> log. It is not a blockchain — it is
         tamper-<i>evident</i>: change one byte of one past alert and re-walking the chain names the record that broke.
@@ -304,7 +304,7 @@
   </section>
 
   <!-- ===================== PROOF ===================== -->
-  <section id="tab-proof" class="tabpane" hidden>
+  <section id="tab-proof" class="tabpane" role="tabpanel" tabindex="0" aria-label="proof" hidden>
     <div class="card"><div class="body">
       <p style="margin-top:0">Constraint (a): the sensor sits behind a diode — traffic in, nothing back. Before any detection,
         here is the property everything depends on. This walks the syntax tree of every module in the detection path and
