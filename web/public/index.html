@@ -8,30 +8,54 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<!-- vector icon sprite: consistent 1.75 stroke, themeable via currentColor, no CDN -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></symbol>
+    <symbol id="i-replay" viewBox="0 0 24 24"><path d="M3 12a9 9 0 109-9 9 9 0 00-7 3.3M3 3v4h4"/></symbol>
+    <symbol id="i-split" viewBox="0 0 24 24"><path d="M6 3v18M6 8h7l3-3M6 16h7l3 3"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 20a8 8 0 1116 0"/><path d="M12 20l4-6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17.5v.5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L4 14h7l-1 7 9-11h-7z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+  </defs>
+</svg>
+
 <header>
   <span class="brand">
-    <h1>PRAHARI</h1>
+    <span class="mark"><svg class="ico ico-lg"><use href="#i-shield"/></svg></span>
+    <span>
+      <h1>PRAHARI</h1>
+    </span>
     <span class="tag">It only listens.</span>
   </span>
-  <span class="chips" id="posture-chips">
-    <span class="chip">read-only ingest</span>
-    <span class="chip">no return path</span>
-    <span class="chip">no payload decryption</span>
-  </span>
   <span class="grow"></span>
-  <span class="chips">
+  <span class="chips" id="posture-chips">
+    <span class="chip"><svg class="ico"><use href="#i-lock"/></svg>read-only</span>
+    <span class="chip">no return path</span>
+    <span class="chip">no decryption</span>
     <span class="chip" id="mode-chip">checking…</span>
-    <button class="btn ghost" id="theme-btn" title="Toggle theme" aria-label="Toggle theme">Theme</button>
+    <button class="btn ghost" id="theme-btn" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="ico"><use href="#i-sun"/></svg>Theme</button>
   </span>
 </header>
 
 <nav class="tabs" role="tablist" id="tabs">
-  <button role="tab" data-tab="live" aria-selected="true">Live sensor</button>
-  <button role="tab" data-tab="replay" aria-selected="false">Replay scenarios</button>
-  <button role="tab" data-tab="degraded" aria-selected="false">One-way visibility</button>
-  <button role="tab" data-tab="metrics" aria-selected="false">Measured results</button>
-  <button role="tab" data-tab="ledger" aria-selected="false">Tamper-evident ledger</button>
-  <button role="tab" data-tab="proof" aria-selected="false">Read-only proof</button>
+  <button role="tab" data-tab="live" aria-selected="true"><svg class="ico"><use href="#i-activity"/></svg>Live sensor</button>
+  <button role="tab" data-tab="replay" aria-selected="false"><svg class="ico"><use href="#i-replay"/></svg>Replay scenarios</button>
+  <button role="tab" data-tab="degraded" aria-selected="false"><svg class="ico"><use href="#i-split"/></svg>One-way visibility</button>
+  <button role="tab" data-tab="metrics" aria-selected="false"><svg class="ico"><use href="#i-gauge"/></svg>Measured results</button>
+  <button role="tab" data-tab="ledger" aria-selected="false"><svg class="ico"><use href="#i-lock"/></svg>Tamper-evident ledger</button>
+  <button role="tab" data-tab="proof" aria-selected="false"><svg class="ico"><use href="#i-eye"/></svg>Read-only proof</button>
 </nav>
 
 <main>
@@ -42,24 +66,24 @@
     <div class="controls">
       <div class="field">
         <label>Sensor</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn" id="live-toggle">Start sensor</button>
-          <span class="clock" id="live-clock">idle</span>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn" id="live-toggle"><svg class="ico"><use href="#i-play"/></svg>Start sensor</button>
+          <span class="clock mono muted" id="live-clock">idle</span>
         </div>
       </div>
       <div class="field grow">
-        <label>Launch real attack traffic (crafted packets on the wire)</label>
-        <div class="chips" id="attack-buttons"></div>
+        <label>Launch real attack traffic — crafted packets on the wire</label>
+        <div class="attackbar" id="attack-buttons"></div>
       </div>
     </div>
 
-    <div class="stats" id="live-stats" style="margin-bottom:14px"></div>
+    <div class="stats" id="live-stats" style="margin-bottom:var(--s4)"></div>
 
     <div class="split">
       <div class="card">
-        <h2>Live alerts <span class="muted" id="live-alert-count"></span>
+        <h2><svg class="ico"><use href="#i-alert"/></svg>Live alerts <span class="muted" id="live-alert-count"></span>
           <span class="grow"></span>
-          <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">newest first · click a row for evidence</span>
+          <span class="subtle">newest first · click a row for evidence</span>
         </h2>
         <div class="tablewrap">
           <table>
@@ -75,7 +99,7 @@
       </div>
       <div class="stack">
         <div class="card">
-          <h2>Correlated incidents</h2>
+          <h2><svg class="ico"><use href="#i-activity"/></svg>Correlated incidents</h2>
           <div class="body" id="live-incidents"><p class="empty" style="padding:12px 0">No multi-stage host yet.</p></div>
         </div>
         <div class="card">
@@ -83,14 +107,14 @@
           <div class="body" id="live-byclass"><p class="empty" style="padding:12px 0">—</p></div>
         </div>
         <div class="card">
-          <h2>Read-only posture</h2>
+          <h2><svg class="ico"><use href="#i-lock"/></svg>Read-only posture</h2>
           <div class="body">
             <ul class="posture">
-              <li><span class="pass">✓</span> capture socket receives only — the detection path holds none</li>
-              <li><span class="pass">✓</span> no route back to the monitored network</li>
-              <li><span class="pass">✓</span> no live threat-intel lookups</li>
-              <li><span class="pass">✓</span> models fitted offline, carried in signed</li>
-              <li><span class="pass">✓</span> metadata only — zero payload decryption</li>
+              <li><svg class="ico"><use href="#i-check"/></svg>capture socket receives only — the detection path holds none</li>
+              <li><svg class="ico"><use href="#i-check"/></svg>no route back to the monitored network</li>
+              <li><svg class="ico"><use href="#i-check"/></svg>no live threat-intel lookups</li>
+              <li><svg class="ico"><use href="#i-check"/></svg>models fitted offline, carried in signed</li>
+              <li><svg class="ico"><use href="#i-check"/></svg>metadata only — zero payload decryption</li>
             </ul>
             <p class="note">Proven, not asserted — see the Read-only proof tab.</p>
           </div>

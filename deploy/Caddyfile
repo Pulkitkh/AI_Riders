@@ -1,0 +1,14 @@
+# Even simpler than nginx: Caddy gets a TLS certificate automatically.
+#   sudo caddy run --config deploy/Caddyfile
+# Replace the domain, point its DNS at this server, and that is the whole setup.
+prahari.example.org {
+    reverse_proxy 127.0.0.1:8000 {
+        # SSE: Caddy streams by default, but make the read timeout generous.
+        transport http {
+            read_timeout 3600s
+        }
+    }
+    request_body {
+        max_size 8MB
+    }
+}

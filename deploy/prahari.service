@@ -1,0 +1,48 @@
+# PRAHARI live sensor — systemd unit for a production server.
+#
+#   sudo cp deploy/prahari.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now prahari
+#   systemctl status prahari      # check it is running
+#   journalctl -u prahari -f      # follow its log
+#
+# Runs as a dedicated unprivileged user granted only CAP_NET_RAW — the one
+# capability a passive tap needs — rather than as root. That is the least
+# privilege the read-only posture implies: it may receive frames off the wire
+# and nothing more.
+[Unit]
+Description=PRAHARI passive network threat sensor
+Documentation=https://github.com/Pulkitkh/AI_Riders
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The dedicated account; create it once with deploy/install.sh.
+User=prahari
+Group=prahari
+WorkingDirectory=/opt/prahari
+Environment=IFACE=eth0
+Environment=PORT=8000
+ExecStart=/usr/bin/python3 -m web.server --host 127.0.0.1 --port ${PORT} --iface ${IFACE} --live
+Restart=on-failure
+RestartSec=3
+
+# Least privilege: only raw-socket capture, nothing else.
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=true
+
+# Sandboxing — the sensor writes nothing and needs almost no filesystem.
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/opt/prahari
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_PACKET
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

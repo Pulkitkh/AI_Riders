@@ -19,6 +19,16 @@ const CLASS_LABEL = {
 };
 const label = (c) => CLASS_LABEL[c] || c;
 
+// Deterministic colour per threat class for the by-class legend dots. These are
+// identity hues (categorical), distinct from the severity ramp.
+const CLASS_HUE = {
+  volumetric_ddos: "#ff5c7a", c2_beaconing: "#7c8bff", dga_resolution: "#35d6a4",
+  dns_tunnelling: "#4bb8f0", encrypted_malware: "#ff9f52", recon_scanning: "#f5c542",
+  data_exfiltration: "#e879f9",
+};
+const SEV_ICON = { critical: "i-alert", high: "i-alert", medium: "i-bolt", low: "i-info" };
+const svg = (id, cls = "ico") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
+
 async function api(path, opts) {
   const r = await fetch(path, opts);
   if (!r.ok && r.headers.get("content-type")?.includes("json")) return r.json();
@@ -31,9 +41,9 @@ async function api(path, opts) {
   const saved = (() => { try { return localStorage.getItem("prahari-theme"); } catch { return null; } })();
   if (saved) document.documentElement.setAttribute("data-theme", saved);
   $("#theme-btn").addEventListener("click", () => {
-    const cur = document.documentElement.getAttribute("data-theme");
-    const next = cur === "dark" ? "light" : cur === "light" ? "dark"
-      : (matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark");
+    // Dark is the app default (no attribute renders dark), so flip against that.
+    const cur = document.documentElement.getAttribute("data-theme") || "dark";
+    const next = cur === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
     try { localStorage.setItem("prahari-theme", next); } catch {}
   });
@@ -52,7 +62,7 @@ $$("#tabs button").forEach((btn) => btn.addEventListener("click", () => {
 
 /* ---------- shared renderers ---------- */
 function sevBadge(sev) {
-  return `<span class="sev ${esc(sev)}">${esc(sev)}</span>`;
+  return `<span class="sev ${esc(sev)}">${svg(SEV_ICON[sev] || "i-info", "ico")}${esc(sev)}</span>`;
 }
 function evidenceText(ev) {
   return Object.entries(ev || {}).slice(0, 3)
@@ -86,10 +96,13 @@ function byClassBars(el, byClass) {
   const entries = Object.entries(byClass || {}).sort((a, b) => b[1] - a[1]);
   if (!entries.length) { el.innerHTML = `<p class="empty" style="padding:8px 0">No detections yet.</p>`; return; }
   const max = Math.max(...entries.map((e) => e[1]));
-  el.innerHTML = entries.map(([c, n]) =>
-    `<div class="bar-row"><span class="lbl">${esc(label(c))}</span>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(4, (n / max) * 100)}%"></div></div>
-      <span class="val">${n}</span></div>`).join("");
+  el.innerHTML = entries.map(([c, n]) => {
+    const hue = CLASS_HUE[c] || "var(--accent)";
+    return `<div class="bar-row">
+      <span class="lbl"><span class="dot" style="background:${hue}"></span>${esc(label(c))}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(4, (n / max) * 100)}%;background:${hue}"></div></div>
+      <span class="val">${n}</span></div>`;
+  }).join("");
 }
 function incidentList(el, incs) {
   if (!incs || !incs.length) { el.innerHTML = `<p class="empty" style="padding:8px 0">No multi-stage host yet.</p>`; return; }
@@ -109,7 +122,7 @@ function openDrawer(a) {
   const rec = a.record ? `<h2 style="font-size:11px;margin:18px 0 8px" class="muted">RAW ALERT RECORD (ECS-ALIGNED)</h2>
     <pre class="raw">${esc(JSON.stringify(a.record, null, 2))}</pre>` : "";
   $("#drawer-content").innerHTML =
-    (a.caveat ? `<div class="banner ${a.reverse_direction_visible === false ? "" : ""}">${esc(a.caveat)}</div>` : "") +
+    (a.caveat ? `<div class="banner info">${svg("i-info")}<span>${esc(a.caveat)}</span></div>` : "") +
     `<dl class="kv">
       <dt>flow id</dt><dd>${esc((a.flow_ids || [])[0] || "—")}</dd>
       <dt>source</dt><dd>${esc(a.src_ip)}</dd>
@@ -176,12 +189,12 @@ const Live = (() => {
   async function toggle() {
     if (running) {
       await api("/api/live/stop", { method: "POST" });
-      stopStream(); running = false; $("#live-toggle").textContent = "Start sensor";
+      stopStream(); running = false; $("#live-toggle").innerHTML = svg("i-play") + "Start sensor";
       $("#live-clock").textContent = "stopped";
     } else {
       const r = await api("/api/live/start", { method: "POST" });
       if (!r.started) { showUnavailable("Could not start the sensor (needs root)."); return; }
-      running = true; $("#live-toggle").textContent = "Stop sensor";
+      running = true; $("#live-toggle").innerHTML = svg("i-stop") + "Stop sensor";
       startStream();
     }
   }
@@ -209,21 +222,17 @@ const Live = (() => {
     const body = $("#live-alerts");
     if (alerts.length === 1) body.innerHTML = "";
     body.insertAdjacentHTML("afterbegin", alertRow(a));
+    const row = body.firstElementChild;
+    row.classList.add("fresh");
+    row.onclick = () => openDrawer(a);
     if (body.children.length > MAX) body.lastElementChild.remove();
-    $$("tr.clickable", body).forEach((tr) => { tr.onclick = () => openDrawer(JSON.parse(tr.dataset.alert)); });
-    $("#live-alert-count").textContent = `(${alerts.reduce((n) => n + 1, 0)})`;
+    $("#live-alert-count").textContent = `(${alerts.length})`;
     byClassBars($("#live-byclass"), byClass);
-    flashRow(body.firstElementChild);
-  }
-  function flashRow(tr) {
-    if (!tr) return;
-    tr.style.transition = "background .8s"; tr.style.background = "var(--tint-warning)";
-    setTimeout(() => (tr.style.background = ""), 60);
   }
 
   function render(st) {
     running = !!st.running;
-    $("#live-toggle").textContent = running ? "Stop sensor" : "Start sensor";
+    $("#live-toggle").innerHTML = running ? svg("i-stop") + "Stop sensor" : svg("i-play") + "Start sensor";
     if (running) $("#live-clock").textContent = `live · ${Math.floor(st.uptime || 0)}s · ${st.clients || 0} watching`;
     const eng = st.engine || {};
     statTiles($("#live-stats"), [
@@ -316,7 +325,7 @@ async function loadDegraded() {
   $("#degraded-rows").innerHTML = d.rows.map((r) =>
     `<tr><td>${esc(label(r.threat_class))}</td>
       <td class="num mono">${r.both}/${r.of}</td>
-      <td class="num mono">${r.one_way < r.both ? `<span class="fail">${r.one_way}/${r.of}</span>` : `<span class="pass">${r.one_way}/${r.of}</span>`}</td>
+      <td class="num mono">${r.one_way < r.both ? `<span class="fail">${svg("i-x","ico-sm")}${r.one_way}/${r.of}</span>` : `<span class="pass">${svg("i-check","ico-sm")}${r.one_way}/${r.of}</span>`}</td>
       <td class="muted" style="font-size:11.5px">${esc(r.lost)}</td></tr>`).join("");
   $("#degraded-note").textContent = d.note;
 }
@@ -349,16 +358,16 @@ function drawSweep(pts) {
   const x = (j) => pad + (j / 0.5) * (W - pad - 12);
   const y = (r) => H - pad - r * (H - pad - 12);
   const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p.jitter).toFixed(1)},${y(p.recall).toFixed(1)}`).join(" ");
-  const dots = pts.map((p) => `<circle cx="${x(p.jitter).toFixed(1)}" cy="${y(p.recall).toFixed(1)}" r="3.5" fill="var(--series-1)"/>`).join("");
+  const dots = pts.map((p) => `<circle cx="${x(p.jitter).toFixed(1)}" cy="${y(p.recall).toFixed(1)}" r="3.5" fill="var(--accent)"/>`).join("");
   const yticks = [0, 0.5, 1].map((v) =>
-    `<line x1="${pad}" y1="${y(v)}" x2="${W - 12}" y2="${y(v)}" stroke="var(--border-soft)"/>
+    `<line x1="${pad}" y1="${y(v)}" x2="${W - 12}" y2="${y(v)}" stroke="var(--border)"/>
      <text x="${pad - 6}" y="${y(v) + 3}" text-anchor="end" font-size="10" fill="var(--ink-3)">${v.toFixed(1)}</text>`).join("");
   const xticks = [0, 0.25, 0.5].map((v) =>
     `<text x="${x(v)}" y="${H - pad + 15}" text-anchor="middle" font-size="10" fill="var(--ink-3)">${(v * 100).toFixed(0)}%</text>`).join("");
   $("#sweep-chart").innerHTML =
     `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Beacon recall stays at 1.0 across 0 to 50 percent jitter">
       ${yticks}${xticks}
-      <path d="${line}" fill="none" stroke="var(--series-1)" stroke-width="2"/>${dots}
+      <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2"/>${dots}
       <text x="${pad}" y="14" font-size="10" fill="var(--ink-3)">recall</text>
       <text x="${W - 12}" y="${H - 4}" text-anchor="end" font-size="10" fill="var(--ink-3)">C2 jitter</text>
     </svg>`;
@@ -372,15 +381,15 @@ async function verifyLedger(tamper) {
   const d = await api(`/api/verify?tamper=${tamper ? 1 : 0}`);
   const ok = d.verified;
   const banner = tamper
-    ? (ok ? `<div class="banner crit">Unexpected: tampering was not detected.</div>`
-      : `<div class="banner good"><b>Tampering detected.</b> Record #${d.tampered_index} was quietly downgraded
+    ? (ok ? `<div class="banner crit">${svg("i-alert")}<span>Unexpected: tampering was not detected.</span></div>`
+      : `<div class="banner good">${svg("i-check")}<span><b>Tampering detected.</b> Record #${d.tampered_index} was quietly downgraded
          (${esc(d.original_value)} → ${esc(d.altered_value)}); re-walking the chain broke at alert
-         <span class="mono">${esc(d.first_bad_alert_id)}</span>.</div>`)
-    : `<div class="banner good"><b>Chain verified.</b> All ${d.records} records intact.</div>`;
+         <span class="mono">${esc(d.first_bad_alert_id)}</span>.</span></div>`)
+    : `<div class="banner good">${svg("i-check")}<span><b>Chain verified.</b> All ${d.records} records intact.</span></div>`;
   $("#ledger-result").innerHTML = banner +
     `<dl class="kv" style="margin-top:12px">
       <dt>records</dt><dd>${d.records}</dd>
-      <dt>verified</dt><dd>${ok ? '<span class="pass">✓ yes</span>' : '<span class="fail">✗ broken</span>'}</dd>
+      <dt>verified</dt><dd>${ok ? '<span class="pass">'+svg("i-check","ico-sm")+'yes</span>' : '<span class="fail">'+svg("i-x","ico-sm")+'broken</span>'}</dd>
       <dt>head hash</dt><dd>${esc((d.head_hash || "").slice(0, 32))}…</dd>
       <dt>retention</dt><dd>${d.retention_days} days (CERT-In)</dd>
     </dl><p class="note">${esc(d.note)}</p>`;
@@ -394,12 +403,12 @@ $("#run-selftest").addEventListener("click", async () => {
   catch { d = await api("data/selftest.json"); }
   const checks = d.checks.map((c) => {
     const mark = c.informational ? '<span class="muted">ⓘ</span>'
-      : c.passed ? '<span class="pass">✓</span>' : '<span class="fail">✗</span>';
-    return `<li>${mark}
+      : c.passed ? '<span class="pass">'+svg("i-check","ico-sm")+'</span>' : '<span class="fail">'+svg("i-x","ico-sm")+'</span>';
+    return `<li style="display:flex;gap:8px;align-items:flex-start">${mark}
       <span><b>${esc(c.name)}</b><br><span class="muted" style="font-size:11.5px">${esc(c.detail)}</span></span></li>`;
   }).join("");
   $("#proof-result").innerHTML =
-    `<div class="banner ${d.passed ? "good" : "crit"}"><b>${d.passed ? "Read-only properties hold." : "CHECK FAILED"}</b></div>
+    `<div class="banner ${d.passed ? "good" : "crit"}">${svg(d.passed ? "i-check" : "i-alert")}<b>${d.passed ? "Read-only properties hold." : "CHECK FAILED"}</b></div>
      <ul class="posture" style="margin-top:12px">${checks}</ul>
      <h2 style="font-size:11px;margin:16px 0 8px" class="muted">MODULES SCANNED (${d.modules.length})</h2>
      <div class="tablewrap"><table><thead><tr><th>Module</th><th>Imports</th></tr></thead><tbody>${

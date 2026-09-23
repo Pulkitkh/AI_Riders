@@ -21,7 +21,60 @@ engine is pure CPython.
 
 Any small Linux VM works — a ₹400/month VPS, a cloud free-tier box, a laptop.
 
-### With Docker (one command)
+### Production install with systemd (real server, real traffic)
+
+This is the deployment for a box that watches **real network traffic** on a real
+interface, continuously, and restarts itself if it ever crashes or the server
+reboots. On a span/mirror port or a tap it analyses live production traffic; the
+attack buttons are only for a self-contained demo.
+
+```bash
+git clone https://github.com/Pulkitkh/AI_Riders && cd AI_Riders
+sudo bash deploy/install.sh eth0        # the interface to monitor
+```
+
+That script:
+- creates a dedicated unprivileged `prahari` user,
+- installs the code under `/opt/prahari` (nothing to `pip install`),
+- registers a systemd service that runs the sensor granted **only** `CAP_NET_RAW`
+  — the least privilege the read-only posture implies — bound to `127.0.0.1:8000`,
+- enables it on boot and starts it.
+
+```bash
+systemctl status prahari        # is it running?
+journalctl -u prahari -f        # follow the live log
+```
+
+Then put TLS and a public port in front of it. Either:
+
+```bash
+# nginx + free Let's Encrypt certificate
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/prahari
+sudo ln -s /etc/nginx/sites-available/prahari /etc/nginx/sites-enabled/
+sudo certbot --nginx -d prahari.example.org
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+or, simpler, Caddy (automatic HTTPS, one file — `deploy/Caddyfile`):
+
+```bash
+sudo caddy run --config deploy/Caddyfile
+```
+
+The one thing a proxy must get right is the **Server-Sent-Events stream**: buffering
+off, long read timeout. Both configs already set this, so alerts reach the browser
+the moment the engine raises them instead of arriving in clumps.
+
+> **To monitor real traffic**, the interface must actually see it: on a physical
+> host, a switch **SPAN/mirror port** or a network **TAP** feeding the sensor NIC;
+> on a cloud VM, a traffic-mirroring session (AWS VPC Traffic Mirroring, Azure vTAP,
+> GCP Packet Mirroring) pointed at the sensor. That is exactly the passive-tap
+> topology the problem statement assumes — the sensor receives a copy and can
+> transmit nothing back.
+
+---
+
+### Quick demo with Docker (one command)
 
 ```bash
 git clone https://github.com/Pulkitkh/AI_Riders && cd AI_Riders
