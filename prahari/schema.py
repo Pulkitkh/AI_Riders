@@ -149,3 +149,83 @@ class Alert:
 
     def to_json(self) -> str:
         return json.dumps(self.to_record(), separators=(",", ":"), sort_keys=True)
+
+
+# Plain-language intelligence for each threat class — written for a non-expert.
+# The dashboard shows this so anyone, technical or not, understands every alert:
+# what it is, why it matters, and what an operator would do. Kept in the schema
+# so there is one source of truth the API and UI both read.
+THREAT_INFO = {
+    "volumetric_ddos": {
+        "title": "Volumetric DDoS",
+        "plain": "A flood of traffic from many fake addresses trying to overwhelm a "
+                 "server so real users cannot reach it.",
+        "analogy": "Like thousands of hoax callers jamming a helpline so genuine "
+                   "callers get a busy tone.",
+        "why": "Can knock a public service — a bank portal, a power dashboard — "
+               "offline for everyone.",
+        "action": "Rate-limit or block the source ranges upstream; alert the ISP.",
+    },
+    "c2_beaconing": {
+        "title": "C2 Beaconing",
+        "plain": "A device on the network is quietly checking in with an attacker's "
+                 "server at regular intervals, waiting for orders.",
+        "analogy": "Like a planted spy calling their handler at the same time every "
+                   "hour to receive instructions.",
+        "why": "It is the heartbeat of an active intrusion — the attacker already "
+               "has a foothold inside.",
+        "action": "Isolate the device, capture the destination, hunt for how it got in.",
+    },
+    "dga_resolution": {
+        "title": "DGA Resolution",
+        "plain": "A device is looking up lots of random-looking website names — the "
+                 "way malware finds its command server when fixed addresses are blocked.",
+        "analogy": "Like a courier dialling hundreds of random numbers until the boss "
+                   "picks up.",
+        "why": "A strong sign of malware trying to reach its operator resiliently.",
+        "action": "Block the domains, quarantine the host, identify the malware family.",
+    },
+    "dns_tunnelling": {
+        "title": "DNS Tunnelling",
+        "plain": "Data is being smuggled out hidden inside ordinary-looking DNS "
+                 "lookups — a channel that often slips past firewalls.",
+        "analogy": "Like sneaking documents out of a building folded inside routine "
+                   "mail that nobody inspects.",
+        "why": "A covert exit route for stolen data or remote control.",
+        "action": "Block the domain, inspect the host, tighten DNS egress rules.",
+    },
+    "encrypted_malware": {
+        "title": "Malware in Encrypted Traffic",
+        "plain": "An encrypted connection whose software fingerprint matches malware, "
+                 "not a normal browser — spotted without decrypting anything.",
+        "analogy": "Like recognising a burglar by their gait on CCTV without ever "
+                   "opening the bag they carry.",
+        "why": "Modern malware hides inside HTTPS; the fingerprint gives it away.",
+        "action": "Investigate the host and destination; the payload was never opened.",
+    },
+    "recon_scanning": {
+        "title": "Reconnaissance / Port Scan",
+        "plain": "Someone is probing many ports on the network to map which doors "
+                 "are open — usually the first step before an attack.",
+        "analogy": "Like a burglar walking down a street trying every door and window "
+                   "to see which is unlocked.",
+        "why": "Early warning: an attacker is planning their way in.",
+        "action": "Note the source, review exposed services, watch for a follow-up.",
+    },
+    "data_exfiltration": {
+        "title": "Data Exfiltration",
+        "plain": "A device is sending out far more data than it receives, to a place "
+                 "it never talked to before — the shape of data being stolen.",
+        "analogy": "Like an employee who suddenly carries out boxes of files every "
+                   "night to an address the company has no dealings with.",
+        "why": "This is the theft itself — intellectual property or citizen data leaving.",
+        "action": "Cut the connection, preserve evidence, begin incident response.",
+    },
+    "benign": {
+        "title": "Benign",
+        "plain": "Normal, expected traffic. No action needed.",
+        "analogy": "",
+        "why": "",
+        "action": "",
+    },
+}

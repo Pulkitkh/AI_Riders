@@ -27,7 +27,22 @@ const CLASS_HUE = {
   data_exfiltration: "#e879f9",
 };
 const SEV_ICON = { critical: "i-alert", high: "i-alert", medium: "i-bolt", low: "i-info" };
+const SEV_COLOR = { critical: "var(--critical)", high: "var(--high)", medium: "var(--medium)", low: "var(--low)" };
 const svg = (id, cls = "ico") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
+
+// Plain-English threat intelligence, loaded from the API (single source of truth
+// in the backend). Lets a non-expert understand every alert.
+let THREAT_INFO = {};
+
+// Confidence as a labelled bar, not a bare number a layman can't judge.
+function confCell(conf, sev) {
+  const pct = Math.round((conf || 0) * 100);
+  const band = pct >= 80 ? "High" : pct >= 50 ? "Medium" : "Low";
+  const col = SEV_COLOR[sev] || "var(--accent)";
+  return `<div class="conf" title="${band} confidence (${pct}%)">
+    <span class="conf-val">${band}</span>
+    <span class="conf-bar"><i style="width:${Math.max(6, pct)}%;background:${col}"></i></span></div>`;
+}
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -75,19 +90,27 @@ function fmtTime(ts) {
     String(d.getMilliseconds()).padStart(3, "0").slice(0, 2);
 }
 function alertRow(a) {
-  return `<tr class="clickable" data-alert='${esc(JSON.stringify(a))}'>
+  const info = THREAT_INFO[a.threat_class] || {};
+  const tip = info.plain ? ` title="${esc(info.plain)}"` : "";
+  return `<tr class="clickable" role="button" tabindex="0" data-sev="${esc(a.severity)}"
+      data-alert='${esc(JSON.stringify(a))}'${tip}
+      aria-label="${esc(label(a.threat_class))}, ${esc(a.severity)} severity, from ${esc(a.src_ip)}. Press Enter for details.">
     <td class="mono">${fmtTime(a.ts)}</td>
     <td>${sevBadge(a.severity)}</td>
     <td>${esc(label(a.threat_class))}</td>
-    <td class="mono">${esc(a.src_ip)} → ${esc(a.dst_ip ?? "—")}</td>
+    <td class="mono">${esc(a.src_ip)} <span class="arrow">→</span> ${esc(a.dst_ip ?? "—")}</td>
     <td class="evidence">${esc(evidenceText(a.evidence))}</td>
-    <td class="num mono">${a.confidence.toFixed(2)}</td>
+    <td class="num">${confCell(a.confidence, a.severity)}</td>
   </tr>`;
 }
-function wireRows(tbody) {
-  $$("tr.clickable", tbody).forEach((tr) => tr.addEventListener("click", () =>
-    openDrawer(JSON.parse(tr.dataset.alert))));
+function bindRow(tr) {
+  const a = JSON.parse(tr.dataset.alert);
+  tr.addEventListener("click", () => openDrawer(a));
+  tr.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDrawer(a); }
+  });
 }
+function wireRows(tbody) { $$("tr.clickable", tbody).forEach(bindRow); }
 function statTiles(el, items) {
   el.innerHTML = items.map(([b, l]) =>
     `<div class="stat"><b>${esc(b)}</b><span>${esc(l)}</span></div>`).join("");
@@ -115,15 +138,27 @@ function incidentList(el, incs) {
 }
 
 /* ---------- drawer ---------- */
+let lastFocus = null;
 function openDrawer(a) {
+  lastFocus = document.activeElement;
   $("#drawer-title").textContent = `${label(a.threat_class)} · ${a.severity}`;
+  const info = THREAT_INFO[a.threat_class] || {};
+  // Plain-English explainer first — what it is, why it matters, what to do.
+  const explain = info.plain ? `<div class="explain">
+    <h3>${svg(SEV_ICON[a.severity] || "i-info", "ico")} What is happening</h3>
+    <p>${esc(info.plain)}</p>
+    ${info.analogy ? `<p class="analogy">${esc(info.analogy)}</p>` : ""}
+    ${info.why ? `<div class="row"><span class="lbl">Why it matters</span><span class="txt">${esc(info.why)}</span></div>` : ""}
+    ${info.action ? `<div class="row"><span class="lbl">What to do</span><span class="txt">${esc(info.action)}</span></div>` : ""}
+  </div>` : "";
   const ev = Object.entries(a.evidence || {}).map(([k, v]) =>
     `<dt>${esc(k)}</dt><dd>${esc(Array.isArray(v) ? JSON.stringify(v) : v)}</dd>`).join("");
   const rec = a.record ? `<h2 style="font-size:11px;margin:18px 0 8px" class="muted">RAW ALERT RECORD (ECS-ALIGNED)</h2>
     <pre class="raw">${esc(JSON.stringify(a.record, null, 2))}</pre>` : "";
-  $("#drawer-content").innerHTML =
+  $("#drawer-content").innerHTML = explain +
     (a.caveat ? `<div class="banner info">${svg("i-info")}<span>${esc(a.caveat)}</span></div>` : "") +
-    `<dl class="kv">
+    `<h2 style="font-size:11px;margin:0 0 8px" class="muted">TECHNICAL DETAIL</h2>
+    <dl class="kv">
       <dt>flow id</dt><dd>${esc((a.flow_ids || [])[0] || "—")}</dd>
       <dt>source</dt><dd>${esc(a.src_ip)}</dd>
       <dt>destination</dt><dd>${esc(a.dst_ip ?? "—")}</dd>
@@ -134,15 +169,20 @@ function openDrawer(a) {
     <h2 style="font-size:11px;margin:18px 0 8px" class="muted">EVIDENCE THAT FIRED THIS ALERT</h2>
     <dl class="kv">${ev}</dl>${rec}`;
   $("#drawer").hidden = false; $("#scrim").hidden = false;
+  $("#drawer-close").focus();          // move focus into the dialog
 }
 $("#drawer-close").addEventListener("click", closeDrawer);
 $("#scrim").addEventListener("click", closeDrawer);
-addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
-function closeDrawer() { $("#drawer").hidden = true; $("#scrim").hidden = true; }
+addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#drawer").hidden) closeDrawer(); });
+function closeDrawer() {
+  $("#drawer").hidden = true; $("#scrim").hidden = true;
+  if (lastFocus && lastFocus.focus) lastFocus.focus();   // return focus to the row
+}
 
 /* ========================= LIVE ========================= */
 const Live = (() => {
   let es = null, running = false, alerts = [], byClass = {}, incidents = [];
+  let sevFilter = "all";
   const MAX = 200;
 
   async function init() {
@@ -161,10 +201,18 @@ const Live = (() => {
       return;
     }
 
-    const buttons = ["syn_flood", "port_scan", "c2_beacon", "dns_tunnel", "malware_tls", "exfil", "benign"];
-    const TIP = { exfil: "baseline-relative — best shown in Replay on a loopback demo; fires live on a real span port" };
-    $("#attack-buttons").innerHTML = buttons.map((n) =>
-      `<button class="btn ghost" data-atk="${n}"${TIP[n] ? ` title="${TIP[n]}"` : ""}>${n.replace("_", " ")}</button>`).join("");
+    // Attack buttons carry a plain-language hint so a non-expert knows what each does.
+    const ATTACKS = [
+      ["syn_flood", "Flood the server with fake connection requests (DDoS)"],
+      ["port_scan", "Probe many ports to find open doors (reconnaissance)"],
+      ["c2_beacon", "A device secretly checking in with an attacker (C2)"],
+      ["dns_tunnel", "Smuggle data out hidden inside DNS lookups"],
+      ["malware_tls", "Malware hiding inside an encrypted connection"],
+      ["exfil", "Steal data by uploading a lot to a new place (best shown in Replay on loopback)"],
+      ["benign", "Ordinary, safe traffic — should raise nothing"],
+    ];
+    $("#attack-buttons").innerHTML = ATTACKS.map(([n, tip]) =>
+      `<button class="btn ghost attack" data-atk="${n}" title="${esc(tip)}">${n.replace("_", " ")}</button>`).join("");
     $$("#attack-buttons button").forEach((b) => b.addEventListener("click", () => launch(b.dataset.atk, b)));
 
     if (!st.capture_available) {
@@ -177,8 +225,34 @@ const Live = (() => {
       $("#mode-chip").textContent = "live capable";
       $("#mode-chip").classList.add("ok");
     }
+
+    // Toolbar: filter, search, export, clear.
+    $("#alert-search").addEventListener("input", renderAlerts);
+    $$("#sev-filter .fchip").forEach((c) => c.addEventListener("click", () => {
+      $$("#sev-filter .fchip").forEach((x) => x.classList.toggle("active", x === c));
+      sevFilter = c.dataset.sev; renderAlerts();
+    }));
+    $("#export-btn").addEventListener("click", exportAlerts);
+    $("#clear-btn").addEventListener("click", () => { alerts = []; renderAlerts(); });
+
     render(st.status || {});
     $("#live-toggle").addEventListener("click", toggle);
+
+    // Auto-resume: if the sensor is already running on the server (e.g. the page
+    // was refreshed), reconnect the stream and reload what it has seen, so a
+    // reload never shows an empty screen while a live capture is underway.
+    if (st.status && st.status.running) {
+      running = true;
+      try {
+        const snap = await api("/api/live/snapshot");
+        (snap.alerts || []).slice().reverse().forEach((a) => {
+          alerts.unshift(a); byClass[a.threat_class] = (byClass[a.threat_class] || 0) + 1;
+        });
+        incidents = snap.incidents || [];
+        renderAlerts(); incidentList($("#live-incidents"), incidents); byClassBars($("#live-byclass"), byClass);
+      } catch {}
+      startStream();
+    }
   }
 
   function showUnavailable(msg) {
@@ -219,15 +293,80 @@ const Live = (() => {
   function onAlert(a) {
     alerts.unshift(a); if (alerts.length > MAX) alerts.pop();
     byClass[a.threat_class] = (byClass[a.threat_class] || 0) + 1;
-    const body = $("#live-alerts");
-    if (alerts.length === 1) body.innerHTML = "";
-    body.insertAdjacentHTML("afterbegin", alertRow(a));
-    const row = body.firstElementChild;
-    row.classList.add("fresh");
-    row.onclick = () => openDrawer(a);
-    if (body.children.length > MAX) body.lastElementChild.remove();
+    renderAlerts(a);
     $("#live-alert-count").textContent = `(${alerts.length})`;
     byClassBars($("#live-byclass"), byClass);
+    updateStatusHero();
+  }
+
+  // Apply the severity filter + search text and rebuild the table. `fresh` marks
+  // a just-arrived alert so it flashes in.
+  function renderAlerts(freshAlert) {
+    const q = ($("#alert-search").value || "").trim().toLowerCase();
+    const shown = alerts.filter((a) => {
+      if (sevFilter !== "all" && a.severity !== sevFilter) return false;
+      if (!q) return true;
+      const hay = `${a.threat_class} ${a.src_ip} ${a.dst_ip} ${label(a.threat_class)} ${evidenceText(a.evidence)}`.toLowerCase();
+      return hay.includes(q);
+    });
+    const body = $("#live-alerts");
+    if (!shown.length) {
+      body.innerHTML = `<tr><td colspan="6" class="empty">${svg("i-search")}${
+        alerts.length ? "No alerts match this filter." :
+        "Start the sensor, then launch an attack — alerts stream in as the engine raises them."}</td></tr>`;
+      return;
+    }
+    body.innerHTML = shown.map(alertRow).join("");
+    $$("tr.clickable", body).forEach(bindRow);
+    if (freshAlert && (sevFilter === "all" || freshAlert.severity === sevFilter)) {
+      const first = body.firstElementChild;
+      if (first) first.classList.add("fresh");
+    }
+  }
+
+  // The big at-a-glance answer for a non-expert: are we secure or under attack?
+  function updateStatusHero() {
+    const el = $("#status-hero");
+    const counts = {};
+    alerts.forEach((a) => (counts[a.severity] = (counts[a.severity] || 0) + 1));
+    const worst = ["critical", "high", "medium", "low"].find((s) => counts[s]);
+    el.className = "status-hero " +
+      (worst === "critical" || worst === "high" ? "attack" : worst ? "elevated" : "secure");
+    const head = $("#status-headline"), det = $("#status-detail");
+    if (!alerts.length) {
+      head.textContent = running ? "All clear" : "System secure";
+      det.textContent = running
+        ? "The sensor is watching. No threats detected yet."
+        : "The sensor is idle. Start it to begin watching for threats.";
+    } else if (worst === "critical" || worst === "high") {
+      head.textContent = "Under attack";
+      det.textContent = `${alerts.length} alert${alerts.length > 1 ? "s" : ""} raised — ${
+        Object.keys(byClass).length} threat type${Object.keys(byClass).length > 1 ? "s" : ""} detected. Click any alert to understand it.`;
+    } else {
+      head.textContent = "Elevated activity";
+      det.textContent = `${alerts.length} lower-severity alert${alerts.length > 1 ? "s" : ""} — worth a look.`;
+    }
+    $("#status-counts").innerHTML = ["critical", "high", "medium", "low"]
+      .filter((s) => counts[s]).map((s) =>
+        `<span class="scount"><span class="dot" style="background:${SEV_COLOR[s]}"></span>${counts[s]} ${s}</span>`).join("");
+  }
+
+  function exportAlerts() {
+    if (!alerts.length) return;
+    const cols = ["time", "severity", "threat_class", "src_ip", "dst_ip", "confidence", "detector", "evidence"];
+    const rows = alerts.map((a) => [
+      new Date(a.ts * 1000).toISOString(), a.severity, a.threat_class, a.src_ip, a.dst_ip ?? "",
+      a.confidence, a.detector ?? "",
+      Object.entries(a.evidence || {}).map(([k, v]) => `${k}=${v}`).join("; "),
+    ]);
+    const csv = [cols.join(","), ...rows.map((r) =>
+      r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `prahari-alerts-${Date.now()}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
   }
 
   function render(st) {
@@ -243,6 +382,7 @@ const Live = (() => {
       [st.iface || "—", "interface"],
     ]);
     if (st.by_class && Object.keys(st.by_class).length) byClassBars($("#live-byclass"), st.by_class);
+    updateStatusHero();
   }
 
   return { init };
@@ -418,11 +558,42 @@ $("#run-selftest").addEventListener("click", async () => {
      <p class="note">${esc(d.note)}</p>`;
 });
 
+/* ========================= OVERVIEW ========================= */
+async function loadThreatInfo() {
+  let data;
+  try { data = await api("/api/scenarios"); }
+  catch { try { data = await api("data/scenarios.json"); } catch { return; } }
+  THREAT_INFO = data.threat_info || {};
+  const sevByClass = data.severity_by_class || {};
+  const order = ["volumetric_ddos", "c2_beaconing", "data_exfiltration", "dns_tunnelling",
+                 "encrypted_malware", "dga_resolution", "recon_scanning"];
+  const el = $("#threat-legend");
+  if (!el) return;
+  el.innerHTML = order.filter((c) => THREAT_INFO[c]).map((c) => {
+    const info = THREAT_INFO[c], sev = sevByClass[c] || "medium", hue = CLASS_HUE[c] || "var(--accent)";
+    return `<div class="threat-card" style="border-left-color:${hue}">
+      <h3><span class="dot" style="background:${hue}"></span>${esc(info.title || label(c))}</h3>
+      <p>${esc(info.plain)}</p>
+      <span class="sevtag sev ${esc(sev)}">${esc(sev)}</span>
+    </div>`;
+  }).join("");
+}
+
 /* ---------- boot ---------- */
 (function boot() {
+  // "goto" buttons on the Overview jump to a tab.
+  $$("[data-goto]").forEach((b) => b.addEventListener("click", () =>
+    $(`#tabs button[data-tab="${b.dataset.goto}"]`)?.click()));
+
+  loadThreatInfo();
+
+  let restored = false;
   try {
     const t = localStorage.getItem("prahari-tab");
-    if (t) $(`#tabs button[data-tab="${t}"]`)?.click();
+    if (t && $(`#tabs button[data-tab="${t}"]`)) { $(`#tabs button[data-tab="${t}"]`).click(); restored = true; }
   } catch {}
+  // First-time visitors land on the Overview so they are oriented before the console.
+  if (!restored) $(`#tabs button[data-tab="overview"]`)?.click();
+
   Live.init();
 })();

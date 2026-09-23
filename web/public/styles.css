@@ -369,3 +369,99 @@ pre.raw {
   main { padding: var(--s4) var(--s4) var(--s7); }
   .brand .tag { display: none; }
 }
+
+/* ============================================================================
+   Overview, status hero, toolbar — the layman-facing additions
+   ============================================================================ */
+.stack2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--s4); align-items: start; }
+@media (max-width: 1000px) { .stack2 { grid-template-columns: 1fr; } }
+
+/* hero */
+.hero { padding: var(--s6); background:
+    radial-gradient(900px 400px at 90% -20%, var(--tint-accent), transparent 60%), var(--surface); }
+.hero-main { display: flex; gap: var(--s4); align-items: flex-start; }
+.hero-badge { width: 52px; height: 52px; border-radius: 14px; flex: none; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--good), #17b98a); color: #fff; box-shadow: 0 8px 24px -8px var(--good); }
+.hero-badge .ico { stroke: #fff; width: 26px; height: 26px; }
+.hero-title { margin: 0; font: 700 24px/1.2 var(--sans); letter-spacing: -.01em; }
+.hero-sub { margin: var(--s2) 0 0; color: var(--ink-2); font-size: 14.5px; line-height: 1.6; max-width: 60ch; }
+.hero-cta { display: flex; gap: var(--s2); margin-top: var(--s4); flex-wrap: wrap; }
+
+/* flow diagram */
+.flow { display: flex; align-items: stretch; gap: var(--s1); flex-wrap: wrap; margin-top: var(--s6);
+  padding-top: var(--s5); border-top: 1px solid var(--border); }
+.flow-node { flex: 1 1 120px; min-width: 100px; display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 4px; padding: var(--s3); border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); }
+.flow-node .ico { color: var(--ink-2); margin-bottom: 2px; }
+.flow-node.accent { border-color: var(--accent); background: var(--tint-accent); }
+.flow-node.accent .ico { color: var(--accent); }
+.flow-node b { font-size: 13px; } .flow-node span { font-size: 10.5px; color: var(--ink-3); }
+.flow-link { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 0 var(--s1); color: var(--good); min-width: 54px; }
+.flow-link .ico { width: 20px; height: 20px; }
+.flow-link em { font-style: normal; font: 600 9px/1 var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+.flow-link.muted { color: var(--critical); }
+
+/* threat legend grid */
+.threat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--s3); }
+.threat-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--s3);
+  background: var(--surface-2); border-left-width: 3px; }
+.threat-card h3 { margin: 0 0 4px; font: 700 13px/1.2 var(--sans); display: flex; align-items: center; gap: 6px; }
+.threat-card h3 .dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.threat-card p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-2); }
+.threat-card .sevtag { font: 700 8.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .06em;
+  padding: 3px 6px; border-radius: 4px; margin-top: var(--s2); display: inline-block; }
+
+/* status hero (Live tab) */
+.status-hero { display: flex; align-items: center; gap: var(--s4); padding: var(--s4) var(--s5);
+  border-radius: var(--radius); margin-bottom: var(--s4); border: 1px solid var(--border);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+.status-hero .status-dot { width: 16px; height: 16px; border-radius: 50%; flex: none; }
+.status-hero .status-text { display: flex; flex-direction: column; gap: 2px; }
+.status-hero .status-text b { font: 700 18px/1.1 var(--sans); }
+.status-hero .status-text span { font-size: 12.5px; color: var(--ink-2); }
+.status-hero .status-counts { margin-left: auto; display: flex; gap: var(--s2); flex-wrap: wrap; }
+.status-hero .scount { display: flex; align-items: center; gap: 5px; font: 700 12px var(--mono);
+  padding: 5px 9px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); }
+.status-hero .scount .dot { width: 8px; height: 8px; border-radius: 50%; }
+.status-hero.secure { background: var(--tint-good); border-color: transparent; }
+.status-hero.secure .status-dot { background: var(--good); box-shadow: 0 0 0 4px var(--tint-good); }
+.status-hero.elevated { background: var(--tint-medium); border-color: transparent; }
+.status-hero.elevated .status-dot { background: var(--medium); }
+.status-hero.attack { background: var(--tint-critical); border-color: transparent; }
+.status-hero.attack .status-dot { background: var(--critical); animation: pulse 1.4s var(--ease) infinite; }
+@media (max-width: 640px) { .status-hero { flex-wrap: wrap; } .status-hero .status-counts { margin-left: 0; width: 100%; } }
+
+/* toolbar (search / filter / export) */
+.toolbar { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap;
+  padding: var(--s2) var(--s4); border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.search { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm); padding: 0 10px; min-width: 200px; flex: 1 1 200px; max-width: 340px; }
+.search .ico { color: var(--ink-3); }
+.search input { border: 0; background: none; padding: 9px 0; color: var(--ink); font: 12.5px var(--sans); width: 100%; min-height: 0; }
+.search input:focus { outline: none; }
+.filter-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.fchip { appearance: none; cursor: pointer; font: 600 11px var(--sans); padding: 6px 11px; min-height: 34px;
+  border-radius: 999px; border: 1px solid var(--border-2); background: var(--surface); color: var(--ink-2);
+  transition: all var(--dur) var(--ease); }
+.fchip:hover { border-color: var(--accent); color: var(--ink); }
+.fchip.active { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+button.btn.sm { min-height: 34px; padding: 6px 11px; font-size: 12px; }
+
+/* confidence bar */
+.conf { display: flex; align-items: center; gap: 7px; justify-content: flex-end; }
+.conf-bar { width: 46px; height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; flex: none; }
+.conf-bar i { display: block; height: 100%; border-radius: 3px; }
+.conf-val { font: 700 10px/1 var(--mono); color: var(--ink-2); min-width: 30px; text-align: right; }
+
+/* drawer plain-english explainer */
+.explain { background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm); padding: var(--s3); margin-bottom: var(--s4); }
+.explain h3 { margin: 0 0 6px; font: 700 14px/1.2 var(--sans); }
+.explain p { margin: 0 0 var(--s2); font-size: 13px; line-height: 1.55; color: var(--ink); }
+.explain .row { display: flex; gap: 8px; margin-top: var(--s2); font-size: 12.5px; align-items: flex-start; }
+.explain .row .lbl { font: 700 9.5px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-3); min-width: 74px; flex: none; }
+.explain .row .txt { color: var(--ink-2); line-height: 1.5; }
+.explain .analogy { font-style: italic; color: var(--ink-2); }

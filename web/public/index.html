@@ -27,6 +27,13 @@
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></symbol>
+    <symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-diode" viewBox="0 0 24 24"><path d="M3 12h6M15 12h6"/><path d="M9 6v12l6-6-6-6z"/><path d="M15 6v12"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
   </defs>
 </svg>
 
@@ -50,7 +57,8 @@
 </header>
 
 <nav class="tabs" role="tablist" id="tabs">
-  <button role="tab" data-tab="live" aria-selected="true"><svg class="ico"><use href="#i-activity"/></svg>Live sensor</button>
+  <button role="tab" data-tab="overview" aria-selected="true"><svg class="ico"><use href="#i-home"/></svg>Overview</button>
+  <button role="tab" data-tab="live" aria-selected="false"><svg class="ico"><use href="#i-activity"/></svg>Live sensor</button>
   <button role="tab" data-tab="replay" aria-selected="false"><svg class="ico"><use href="#i-replay"/></svg>Replay scenarios</button>
   <button role="tab" data-tab="degraded" aria-selected="false"><svg class="ico"><use href="#i-split"/></svg>One-way visibility</button>
   <button role="tab" data-tab="metrics" aria-selected="false"><svg class="ico"><use href="#i-gauge"/></svg>Measured results</button>
@@ -59,9 +67,66 @@
 </nav>
 
 <main>
+  <!-- ===================== OVERVIEW ===================== -->
+  <section id="tab-overview" class="tabpane">
+    <div class="hero card">
+      <div class="hero-main">
+        <span class="hero-badge"><svg class="ico ico-lg"><use href="#i-shield-check"/></svg></span>
+        <div>
+          <h2 class="hero-title">A guard that watches your network — and never talks back.</h2>
+          <p class="hero-sub">PRAHARI sits behind a one-way gate and reads a copy of your
+            network traffic. It spots seven kinds of cyber-attack in real time using their
+            behaviour, without ever decrypting a message or sending anything back into the
+            network — so it can never become the way in.</p>
+          <div class="hero-cta">
+            <button class="btn" data-goto="live"><svg class="ico"><use href="#i-play"/></svg>See it live</button>
+            <button class="btn ghost" data-goto="replay"><svg class="ico"><use href="#i-replay"/></svg>Try a scenario</button>
+          </div>
+        </div>
+      </div>
+      <div class="flow" aria-label="How data flows: network to one-way gate to PRAHARI, nothing returns">
+        <div class="flow-node"><svg class="ico ico-lg"><use href="#i-activity"/></svg><b>Your network</b><span>power, banking, telecom</span></div>
+        <div class="flow-link"><svg class="ico"><use href="#i-arrow"/></svg><em>copy only</em></div>
+        <div class="flow-node"><svg class="ico ico-lg"><use href="#i-diode"/></svg><b>One-way gate</b><span>data diode</span></div>
+        <div class="flow-link"><svg class="ico"><use href="#i-arrow"/></svg><em>read-only</em></div>
+        <div class="flow-node accent"><svg class="ico ico-lg"><use href="#i-shield"/></svg><b>PRAHARI</b><span>watches &amp; alerts</span></div>
+        <div class="flow-link muted"><svg class="ico"><use href="#i-x"/></svg><em>nothing back</em></div>
+      </div>
+    </div>
+
+    <div class="stack2" style="margin-top:var(--s4)">
+      <div class="card">
+        <h2><svg class="ico"><use href="#i-alert"/></svg>The seven threats it catches</h2>
+        <div class="body"><div id="threat-legend" class="threat-grid"></div></div>
+      </div>
+      <div class="card">
+        <h2><svg class="ico"><use href="#i-shield-check"/></svg>Why it can be trusted</h2>
+        <div class="body">
+          <ul class="posture">
+            <li><svg class="ico"><use href="#i-check"/></svg><span><b>It only listens.</b> The part that detects threats cannot open a network connection — proven, not promised (see Read-only proof).</span></li>
+            <li><svg class="ico"><use href="#i-check"/></svg><span><b>No decryption.</b> It reads only the shape and timing of traffic, never the private contents.</span></li>
+            <li><svg class="ico"><use href="#i-check"/></svg><span><b>Every alert explains itself.</b> Click any alert to see, in plain words, what it means and what to do.</span></li>
+            <li><svg class="ico"><use href="#i-check"/></svg><span><b>Tamper-evident record.</b> Alerts are chained so a past record cannot be quietly edited.</span></li>
+            <li><svg class="ico"><use href="#i-check"/></svg><span><b>Runs anywhere.</b> Pure Python, zero dependencies — installs even on an offline machine.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ===================== LIVE ===================== -->
-  <section id="tab-live" class="tabpane">
+  <section id="tab-live" class="tabpane" hidden>
     <div id="live-unavailable" class="banner" hidden></div>
+
+    <!-- at-a-glance status for a non-expert -->
+    <div id="status-hero" class="status-hero secure">
+      <span class="status-dot"></span>
+      <div class="status-text">
+        <b id="status-headline">System secure</b>
+        <span id="status-detail">The sensor is idle. Start it to begin watching for threats.</span>
+      </div>
+      <div class="status-counts" id="status-counts"></div>
+    </div>
 
     <div class="controls">
       <div class="field">
@@ -83,16 +148,34 @@
       <div class="card">
         <h2><svg class="ico"><use href="#i-alert"/></svg>Live alerts <span class="muted" id="live-alert-count"></span>
           <span class="grow"></span>
-          <span class="subtle">newest first · click a row for evidence</span>
+          <span class="subtle">newest first · click a row to understand it</span>
         </h2>
+        <div class="toolbar">
+          <div class="search">
+            <svg class="ico ico-sm"><use href="#i-search"/></svg>
+            <input type="search" id="alert-search" placeholder="Search source, threat, evidence…" aria-label="Search alerts">
+          </div>
+          <div class="filter-chips" id="sev-filter" role="group" aria-label="Filter by severity">
+            <button class="fchip active" data-sev="all">All</button>
+            <button class="fchip" data-sev="critical">Critical</button>
+            <button class="fchip" data-sev="high">High</button>
+            <button class="fchip" data-sev="medium">Medium</button>
+            <button class="fchip" data-sev="low">Low</button>
+          </div>
+          <span class="grow"></span>
+          <button class="btn ghost sm" id="export-btn" title="Download alerts as CSV">
+            <svg class="ico ico-sm"><use href="#i-download"/></svg>Export</button>
+          <button class="btn ghost sm" id="clear-btn" title="Clear the view (does not touch the record)">
+            <svg class="ico ico-sm"><use href="#i-trash"/></svg>Clear</button>
+        </div>
         <div class="tablewrap">
           <table>
             <thead><tr>
               <th>Time</th><th>Severity</th><th>Threat</th>
-              <th>Source → Destination</th><th>Evidence</th><th class="num">Conf</th>
+              <th>Source → Destination</th><th>Evidence</th><th class="num">Confidence</th>
             </tr></thead>
-            <tbody id="live-alerts">
-              <tr><td colspan="6" class="empty">Start the sensor, then launch an attack — alerts stream in as the engine raises them.</td></tr>
+            <tbody id="live-alerts" aria-live="polite">
+              <tr><td colspan="6" class="empty"><svg class="ico"><use href="#i-activity"/></svg>Start the sensor, then launch an attack — alerts stream in as the engine raises them.</td></tr>
             </tbody>
           </table>
         </div>

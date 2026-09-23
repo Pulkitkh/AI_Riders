@@ -20,7 +20,7 @@ from typing import Any
 from prahari.engine import Engine
 from prahari.generate import ALL_ATTACKS, TrafficGenerator
 from prahari.ledger import AlertLedger
-from prahari.schema import CLASSES, SEVERITY_BY_CLASS, Alert
+from prahari.schema import CLASSES, SEVERITY_BY_CLASS, THREAT_INFO, Alert
 from prahari.visibility import DEGRADED, project_all
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,6 +103,7 @@ def list_scenarios() -> dict:
         ],
         "threat_classes": [c for c in CLASSES if c != "benign"],
         "severity_by_class": SEVERITY_BY_CLASS,
+        "threat_info": THREAT_INFO,
     }
 
 
