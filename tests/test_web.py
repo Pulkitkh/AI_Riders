@@ -116,6 +116,25 @@ def test_pcap_too_large_rejected():
     assert s == 413 and "limit_bytes" in d
 
 
+def test_live_replay_alerts_on_capture_clock():
+    """Replaying a capture must raise alerts. Regression guard: the replay has to
+    advance the engine on the CAPTURE timeline, not wall-clock — historical
+    timestamps against a wall-clock advance close every window before its flows
+    arrive, so the dashboard would show a live feed that never alerts."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from make_pcap import build, write_pcap
+    from sensor.live import LiveSensor
+    import tempfile
+    _, packets = build(600, seed=1337)
+    tmp = Path(tempfile.mkdtemp()) / "replay.pcap"
+    write_pcap(tmp, packets, snaplen=256)
+    s = LiveSensor(iface="lo")
+    s.replay_pcap(tmp, speed=1e9)                 # as fast as possible
+    s._thread.join(timeout=30)
+    assert s.flows_total > 0
+    assert s.alerts_total > 0 and len(s.by_class) >= 3
+
+
 def test_unknown_route_404():
     s, d = _json("GET", "/api/nope")
     assert s == 404 and "routes" in d

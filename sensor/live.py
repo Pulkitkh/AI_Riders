@@ -156,7 +156,11 @@ class LiveSensor:
                 self.flows_total += 1
                 self.engine.push(f)
                 if self.flows_total % 40 == 0:
-                    self.engine.advance(_t.time())
+                    # Advance on the CAPTURE clock, not wall-clock: replayed
+                    # flows carry the timestamps they had on the wire, so the
+                    # engine must close windows in capture time or every window
+                    # ends before its flows arrive and nothing ever alerts.
+                    self.engine.advance(f.ts)
                     self._flush_tick()
             self.engine.advance(flows[-1].ts + self.window)
             self._flush_tick()
