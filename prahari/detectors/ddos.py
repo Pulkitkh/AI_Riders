@@ -25,6 +25,10 @@ class DDoSDetector(Detector):
     MIN_FLOWS = 150             # below this a burst is not volumetric
     ENTROPY_FLOOR = 6.0         # bits, over source addresses
     COMPLETION_CEIL = 0.20      # fraction of SYNs that got a SYN-ACK
+    # Ports that answer a small query with a large reply — the reflectors used
+    # in amplification floods (DNS, NTP, SSDP, memcached, chargen, LDAP).
+    AMPLIFIER_PORTS = {53, 123, 1900, 11211, 19, 389, 137, 161}
+    AMPLIFY_SIZE = 600          # bytes; a reply this large from a reflector is suspect
 
     def __init__(self) -> None:
         self.by_dst: dict[str, list[Flow]] = defaultdict(list)
@@ -50,6 +54,15 @@ class DDoSDetector(Detector):
             # UDP has no handshake, so applying it there marked every busy DNS
             # resolver as a flood — a real bug this caught, and the reason the
             # component is now gated on the protocol mix.
+            # Reflection/amplification: large UDP replies arriving from known
+            # reflector source ports are the tell — a spoofed victim is being
+            # drowned in responses it never asked for.
+            udp = [f for f in flows if f.proto == "udp"]
+            reflections = [f for f in udp
+                           if f.src_port in self.AMPLIFIER_PORTS
+                           and (f.bytes_out / max(f.pkts_out, 1)) >= self.AMPLIFY_SIZE]
+            amplification = len(reflections) >= max(0.3 * len(udp), 20) if udp else False
+
             tcp = [f for f in flows if f.proto == "tcp"]
             has_handshake = len(tcp) >= 0.5 * len(flows)
             syns = sum(f.syn for f in tcp) or 1
@@ -68,6 +81,8 @@ class DDoSDetector(Detector):
                 score += min(max(surge - 5.0, 0.0) / 10.0, 1.0) * 0.35
             if surge > 3.0:
                 score += min((surge - 3.0) / 10.0, 1.0) * 0.20
+            if amplification:
+                score += 0.25          # a clear reflector signature
             score = min(score, 1.0)
 
             if score >= self.threshold:
@@ -86,6 +101,10 @@ class DDoSDetector(Detector):
                         "handshake_completion_ratio":
                             round(completion, 3) if completion is not None else "n/a (udp)",
                         "surge_vs_baseline": round(surge, 1),
+                        "attack_kind": ("udp_reflection_amplification" if amplification
+                                        else "spoofed_flood" if ent >= self.ENTROPY_FLOOR
+                                        else "protocol_flood"),
+                        "reflector_replies": len(reflections),
                     },
                 ))
         return out

@@ -128,6 +128,7 @@ Everything below runs. Nothing here is a mock, a stub, or a screenshot.
 | Read-only self-test | working |
 | Held-out evaluation + jitter sweep | working |
 | PCAP / PCAPNG reader — real packets to the same `Flow` record | working |
+| NetFlow v5 ingest — exported flow records to the same `Flow` | working |
 | Single-direction (one-way tap) degraded mode, measured | working |
 | Real JA3 fingerprint + X.509 parsing from the handshake | working |
 

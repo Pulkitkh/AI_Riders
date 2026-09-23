@@ -5,6 +5,11 @@
       "fp": 0,
       "fn": 0
     },
+    "data_exfiltration": {
+      "tp": 5,
+      "fp": 5,
+      "fn": 0
+    },
     "encrypted_malware": {
       "tp": 5,
       "fp": 0,
@@ -15,7 +20,7 @@
       "fp": 0,
       "fn": 0
     },
-    "volumetric_ddos": {
+    "dga_resolution": {
       "tp": 5,
       "fp": 0,
       "fn": 0
@@ -25,14 +30,9 @@
       "fp": 0,
       "fn": 0
     },
-    "dga_resolution": {
+    "volumetric_ddos": {
       "tp": 5,
       "fp": 0,
-      "fn": 0
-    },
-    "data_exfiltration": {
-      "tp": 5,
-      "fp": 5,
       "fn": 0
     }
   },

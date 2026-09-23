@@ -243,6 +243,35 @@ def test_tls_detector_marks_degraded_alerts_honestly():
         assert "degraded" in a.caveat
 
 
+def test_netflow_v5_ingest_roundtrips():
+    """Exported flow records (NetFlow v5) map onto the same Flow the engine uses."""
+    from prahari.netflow import build_v5, parse_v5
+    dg = build_v5([
+        {"src_ip": "10.0.0.5", "dst_ip": "8.8.8.8", "src_port": 40000, "dst_port": 443,
+         "proto": "tcp", "bytes": 4096, "pkts": 20, "flags": 0x12},
+        {"src_ip": "10.0.0.6", "dst_ip": "1.1.1.1", "src_port": 51000, "dst_port": 53,
+         "proto": "udp", "bytes": 90, "pkts": 1},
+    ])
+    flows = parse_v5(dg)
+    assert len(flows) == 2
+    assert flows[0].src_ip == "10.0.0.5" and flows[0].dst_ip == "8.8.8.8"
+    assert flows[0].proto == "tcp" and flows[0].bytes_out == 4096 and flows[0].synack == 1
+    assert flows[1].proto == "udp" and flows[1].dst_port == 53
+
+
+def test_udp_reflection_amplification_detected():
+    """The reflection/amplification signature the PS names explicitly."""
+    from prahari.detectors.ddos import DDoSDetector
+    d = DDoSDetector()
+    for i in range(200):
+        d.observe(Flow(ts=i * 0.01, src_ip=f"9.9.{i % 254}.{(i * 7) % 254}",
+                       dst_ip="10.0.0.80", src_port=53, dst_port=40000 + i,
+                       proto="udp", pkts_out=1, bytes_out=3000))
+    dets = d.evaluate(2.0)
+    assert dets, "amplification flood not detected"
+    assert dets[0].evidence["attack_kind"] == "udp_reflection_amplification"
+
+
 def test_read_only_selftest_passes():
     from prahari.selftest import check_no_network_imports
     ok, offenders = check_no_network_imports()
