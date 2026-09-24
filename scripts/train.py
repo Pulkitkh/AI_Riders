@@ -18,6 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from prahari.anomaly import IsolationForest
+from prahari.detectors.anomaly import AnomalyDetector
 from prahari.detectors.beacon import FEATURES as BEACON_FEATURES, BeaconDetector
 from prahari.detectors.dga import FEATURES as DGA_FEATURES
 from prahari.detectors.exfil import FEATURES as EXFIL_FEATURES, ExfilDetector
@@ -214,6 +216,21 @@ def main() -> int:
     metrics["exfil_train"] = report(exf, Xtr, ytr, "exfil on training set")
     metrics["exfil_held_out"] = report(exf, Xh, yh, "exfil HELD-OUT captures")
     exf.save("exfil")
+
+    # -- anomaly (unsupervised, benign-only) ----------------------------------
+    print("\nfitting Isolation Forest on benign traffic (zero-day net) ...")
+    Xben = [AnomalyDetector.features(f) for f in train_flows if f.label == "benign"]
+    print(f"  benign feature vectors: {len(Xben)}")
+    iso = IsolationForest(n_trees=120, sample_size=256).fit(Xben)
+    # sanity: mean score on benign held-out vs. attack held-out
+    ben_h = [iso.score(AnomalyDetector.features(f)) for f in held_flows if f.label == "benign"]
+    atk_h = [iso.score(AnomalyDetector.features(f)) for f in held_flows if f.label != "benign"]
+    mben = sum(ben_h) / len(ben_h) if ben_h else 0.0
+    matk = sum(atk_h) / len(atk_h) if atk_h else 0.0
+    print(f"  mean anomaly score  benign {mben:.3f}  |  attack {matk:.3f}  (higher = more anomalous)")
+    iso.save("anomaly")
+    metrics["anomaly"] = {"benign_mean": round(mben, 4), "attack_mean": round(matk, 4),
+                          "benign_vectors": len(Xben)}
 
     (MODEL_DIR / "training_report.json").write_text(
         json.dumps(metrics, indent=2), encoding="utf-8")

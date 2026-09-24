@@ -24,7 +24,7 @@
     "tp": 36,
     "fp": 0,
     "fn": 0,
-    "tn": 3280
+    "tn": 3316
   },
   "beacon_held_out": {
     "precision": 1.0,
@@ -33,24 +33,29 @@
     "tp": 9,
     "fp": 0,
     "fn": 0,
-    "tn": 813
+    "tn": 839
   },
   "exfil_train": {
-    "precision": 0.9524,
+    "precision": 1.0,
     "recall": 1.0,
-    "f1": 0.9756,
-    "tp": 20,
-    "fp": 1,
+    "f1": 1.0,
+    "tp": 42,
+    "fp": 0,
     "fn": 0,
-    "tn": 110
+    "tn": 114
   },
   "exfil_held_out": {
     "precision": 1.0,
     "recall": 1.0,
     "f1": 1.0,
-    "tp": 3,
+    "tp": 10,
     "fp": 0,
     "fn": 0,
-    "tn": 30
+    "tn": 28
+  },
+  "anomaly": {
+    "benign_mean": 0.4951,
+    "attack_mean": 0.6156,
+    "benign_vectors": 97908
   }
 }

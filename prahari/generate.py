@@ -200,6 +200,35 @@ class TrafficGenerator:
                     tls_ja4=rng.choice(JA4_COMMON), tls_sni="storage-sync.example-cloud.com",
                     tls_cert_days=365, label="data_exfiltration")
 
+    def _modbus(self, t: float, src: str, dst: str, func: int, write: bool = False,
+                illegal: bool = False, label: str = "benign") -> Flow:
+        """One Modbus/TCP request flow — an HMI poll, or an attacker's command."""
+        rng = self.rng
+        return Flow(ts=t, src_ip=src, dst_ip=dst, src_port=rng.randint(32768, 61000),
+                    dst_port=502, duration=rng.uniform(0.01, 0.2),
+                    pkts_out=2, pkts_in=2, bytes_out=rng.randint(66, 78),
+                    bytes_in=rng.randint(70, 120), syn=1, synack=1, fin=1,
+                    ics_proto="modbus", ics_func=func, ics_unit=rng.randint(1, 3),
+                    ics_write=write, ics_illegal=illegal, label=label)
+
+    def _ics_attack(self, t0: float, src: str, plc: str) -> list[Flow]:
+        """An OT intrusion: first enumerate function codes, then issue
+        unauthorised WRITE commands and one illegal code — the classic ICS
+        kill-chain from a host that never legitimately polled the PLC."""
+        rng = self.rng
+        flows = []
+        # function-code enumeration (reconnaissance of the controller)
+        for i, fc in enumerate((1, 2, 3, 4, 7, 17)):
+            flows.append(self._modbus(t0 + i * 0.6, src, plc, fc, label="ics_intrusion"))
+        # an illegal function code (fuzzing / exploitation probe)
+        flows.append(self._modbus(t0 + 4.0, src, plc, 99, illegal=True, label="ics_intrusion"))
+        # unauthorised state-changing writes (open a breaker / change a setpoint)
+        for i in range(6):
+            fc = rng.choice((5, 6, 16))
+            flows.append(self._modbus(t0 + 5.0 + i * 0.8, src, plc, fc, write=True,
+                                      label="ics_intrusion"))
+        return flows
+
     # -- the capture ----------------------------------------------------------
     def capture(self, duration_s: int = 1800, t0: float = 0.0,
                 classes: set[str] | None = None) -> list[Flow]:
@@ -235,6 +264,16 @@ class TrafficGenerator:
         # a backup window that inverts the byte ratio, benignly
         for i in range(6):
             flows.append(self._backup(t0 + duration_s * 0.55 + i * 9, INTERNAL[6]))
+
+        # benign OT: an HMI polls each PLC with read commands, forever. This is
+        # the baseline that makes an attacker's writes "unauthorised".
+        HMI, PLCS = "10.42.0.50", ["10.42.5.10", "10.42.5.11", "10.42.5.12"]
+        for plc in PLCS:
+            k = 0
+            while t0 + k * 5.0 < t0 + duration_s:
+                flows.append(self._modbus(t0 + k * 5.0 + rng.uniform(0, 0.3), HMI, plc,
+                                          rng.choice((3, 4))))
+                k += 1
 
         # --- attacks ----------------------------------------------------------
         if "volumetric_ddos" in on:
@@ -273,13 +312,16 @@ class TrafficGenerator:
             flows += self._scan(t0 + duration_s * 0.12, "10.42.9.2", 900)
 
         if "data_exfiltration" in on:
-            src = INTERNAL[17]
+            src = INTERNAL[22]        # a dedicated host: a clean baseline, then bulk upload
             for i in range(9):
                 flows.append(self._exfil(t0 + duration_s * 0.72 + i * 30, src, "198.51.100.77"))
+
+        if "ics_intrusion" in on:
+            flows += self._ics_attack(t0 + duration_s * 0.66, "10.42.9.7", "10.42.5.10")
 
         flows.sort(key=lambda f: f.ts)
         return flows
 
 
 ALL_ATTACKS = {"volumetric_ddos", "c2_beaconing", "dga_resolution", "dns_tunnelling",
-               "encrypted_malware", "recon_scanning", "data_exfiltration"}
+               "encrypted_malware", "recon_scanning", "data_exfiltration", "ics_intrusion"}

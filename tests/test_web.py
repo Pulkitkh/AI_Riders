@@ -24,7 +24,7 @@ def _json(method, path, query="", body=b""):
 def test_health_and_routes():
     s, d = _json("GET", "/api/health")
     assert s == 200 and d["third_party_packages"] == 0
-    assert d["threat_classes"] == 7
+    assert d["threat_classes"] == 9
 
 
 def test_scenarios_listed():
@@ -149,7 +149,7 @@ def test_cors_preflight():
 def test_service_degraded_measures_retention():
     d = service.degraded(duration=600, seeds=(2001, 2002))
     assert 0.5 <= d["retained"] <= 1.0
-    assert len(d["rows"]) == 7
+    assert len(d["rows"]) == 8
 
 
 if __name__ == "__main__":

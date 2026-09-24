@@ -1,6 +1,16 @@
 {
   "per_class": {
-    "dns_tunnelling": {
+    "data_exfiltration": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0
+    },
+    "encrypted_malware": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0
+    },
+    "volumetric_ddos": {
       "tp": 5,
       "fp": 0,
       "fn": 0
@@ -10,7 +20,17 @@
       "fp": 0,
       "fn": 0
     },
-    "volumetric_ddos": {
+    "dga_resolution": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0
+    },
+    "dns_tunnelling": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0
+    },
+    "ics_intrusion": {
       "tp": 5,
       "fp": 0,
       "fn": 0
@@ -19,23 +39,8 @@
       "tp": 5,
       "fp": 0,
       "fn": 0
-    },
-    "data_exfiltration": {
-      "tp": 4,
-      "fp": 0,
-      "fn": 1
-    },
-    "encrypted_malware": {
-      "tp": 5,
-      "fp": 0,
-      "fn": 0
-    },
-    "dga_resolution": {
-      "tp": 5,
-      "fp": 0,
-      "fn": 0
     }
   },
-  "alerts": 207,
+  "alerts": 224,
   "simulated_hours": 2.5
 }

@@ -25,7 +25,7 @@ class ReconDetector(Detector):
         self.by_src: dict[str, list[Flow]] = defaultdict(list)
 
     def observe(self, flow: Flow) -> None:
-        if flow.proto == "tcp" and flow.syn:
+        if flow.proto == "tcp" and flow.syn and not flow.ics_proto:
             self.by_src[flow.src_ip].append(flow)
 
     def evaluate(self, window_end: float) -> list[Detection]:

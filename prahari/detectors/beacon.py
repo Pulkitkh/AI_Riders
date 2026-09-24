@@ -46,7 +46,7 @@ class BeaconDetector(Detector):
         self.dst_popularity: dict[str, set[str]] = defaultdict(set)
 
     def observe(self, flow: Flow) -> None:
-        if flow.proto != "tcp" or not flow.syn:
+        if flow.proto != "tcp" or not flow.syn or flow.ics_proto:
             return
         key = (flow.src_ip, flow.dst_ip)
         self.history[key].append(flow)

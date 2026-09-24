@@ -11,13 +11,16 @@ from .tunnel import TunnelDetector
 from .tls import EncryptedMalwareDetector
 from .recon import ReconDetector
 from .exfil import ExfilDetector
+from .ics import ICSDetector
+from .anomaly import AnomalyDetector
 
 
 def all_detectors() -> list[Detector]:
     return [DDoSDetector(), BeaconDetector(), DGADetector(), TunnelDetector(),
-            EncryptedMalwareDetector(), ReconDetector(), ExfilDetector()]
+            EncryptedMalwareDetector(), ReconDetector(), ExfilDetector(),
+            ICSDetector(), AnomalyDetector()]
 
 
 __all__ = ["Detector", "Detection", "all_detectors", "DDoSDetector", "BeaconDetector",
            "DGADetector", "TunnelDetector", "EncryptedMalwareDetector",
-           "ReconDetector", "ExfilDetector"]
+           "ReconDetector", "ExfilDetector", "ICSDetector", "AnomalyDetector"]

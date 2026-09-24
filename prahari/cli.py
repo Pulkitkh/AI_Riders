@@ -177,16 +177,26 @@ def cmd_bench(args) -> int:
         flows += gen.capture(args.duration, t0=i * args.duration, classes=ALL_ATTACKS)
     flows.sort(key=lambda f: f.ts)
     print(f"benchmark: replaying {len(flows)} flows through the full pipeline ...")
+    import resource
+    import time as _t
+    total_bytes = sum(f.bytes_out + f.bytes_in for f in flows)
     engine = Engine(window=args.window)
+    t0 = _t.perf_counter()
     engine.run(flows)
+    wall = _t.perf_counter() - t0
     s = engine.stats.summary()
+    maxrss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0  # KB->MB on Linux
+    fps = len(flows) / wall if wall else 0.0
+    # line-rate this flow-rate corresponds to, at the measured mean flow size
+    gbps = (total_bytes * 8 / wall / 1e9) if wall else 0.0
     print(json.dumps(s, indent=2))
-    print(f"\nSUSTAINED: {s['flows_per_sec']:.0f} flows/sec  |  "
-          f"detection latency p50 {s['latency_p50_ms']:.0f} ms, "
+    print(f"\nSUSTAINED: {fps:.0f} flows/sec on one core  |  peak RSS {maxrss_mb:.0f} MB  |  "
+          f"~{gbps:.2f} Gbps at the mean flow size ({total_bytes/max(len(flows),1):.0f} B/flow)")
+    print(f"detection latency p50 {s['latency_p50_ms']:.0f} ms, "
           f"p95 {s['latency_p95_ms']:.0f} ms, p99 {s['latency_p99_ms']:.0f} ms")
-    print("NOTE: latency is bounded below by the window size — a detector that "
-          "aggregates over 60 s cannot alert faster than 60 s, and claiming "
-          "otherwise would be incoherent.")
+    print("NOTE: latency is bounded below by the window size — a 60 s aggregation "
+          "cannot alert faster than 60 s. Throughput scales with cores and sensors; "
+          "line-rate above ~1 Gbps is a multi-sensor / AF_PACKET-fanout deployment.")
     return 0
 
 

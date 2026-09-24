@@ -242,6 +242,13 @@ def flow_to_packets(f: Flow, rng: random.Random) -> list[tuple[float, bytes]]:
         out(tcp(f.src_port, f.dst_port, TCP_ACK), 6, t)
         t += step
 
+    if f.synack and f.ics_proto == "modbus" and f.ics_func is not None:
+        # Modbus/TCP request: MBAP header + function code — real wire bytes so
+        # the offline reader recovers the same OT metadata it sees live.
+        mbap = struct.pack("!HHHB", rng.randrange(65536), 0, 2, f.ics_unit or 1)
+        out(tcp(f.src_port, f.dst_port, TCP_PSH | TCP_ACK, mbap + bytes([f.ics_func & 0xFF])), 6, t)
+        t += step
+
     if f.synack and (f.tls_ja4 is not None or f.dst_port == 443):
         odd = f.tls_self_signed or f.label == "encrypted_malware"
         hello = tls_client_hello(

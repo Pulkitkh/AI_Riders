@@ -267,7 +267,7 @@ def test_detectors_fire_on_real_packet_bytes():
     from_records = {a.threat_class for a in Engine(window=60.0).run(orig)}
     assert from_records <= from_packets, (
         f"lost on real bytes: {sorted(from_records - from_packets)}")
-    assert len(from_packets) >= 6
+    assert len(from_packets) >= 7
 
 
 # --- single-direction visibility ---------------------------------------------
@@ -282,8 +282,8 @@ def test_single_direction_keeps_most_classes():
     flows = TrafficGenerator(seed=2001, jitter=0.2).capture(1800, classes=ALL_ATTACKS)
     full = {a.threat_class for a in Engine(window=60.0).run(flows)}
     degraded = {a.threat_class for a in Engine(window=60.0).run(project_all(flows))}
-    assert len(full) == 7
-    assert len(degraded) >= 6, f"one-way visibility lost {sorted(full - degraded)}"
+    assert len(full) >= 8
+    assert len(degraded) >= 7, f"one-way visibility lost {sorted(full - degraded)}"
 
 
 def test_projection_removes_every_server_side_field():
@@ -360,6 +360,64 @@ def test_learned_exfil_uses_destination_locality():
     assert p_ext >= d.threshold, f"external exfil not flagged ({p_ext:.2f})"
     assert p_int < d.threshold, f"internal upload wrongly flagged ({p_int:.2f})"
     assert p_ext - p_int > 0.5
+
+
+def test_modbus_parser_reads_function_code_not_payload():
+    """OT support: the Modbus/TCP header yields function code + write intent,
+    header-only, and rejects a non-Modbus datagram."""
+    import struct
+    from prahari.icsparse import parse_modbus, parse_ics
+    write = parse_modbus(struct.pack("!HHHB", 1, 0, 6, 1) + bytes([6, 0, 1, 0, 99]))
+    assert write["proto"] == "modbus" and write["func"] == 6 and write["is_write"]
+    read = parse_modbus(struct.pack("!HHHB", 2, 0, 6, 1) + bytes([3, 0, 0, 0, 10]))
+    assert not read["is_write"] and read["is_valid"]
+    illegal = parse_modbus(struct.pack("!HHHB", 3, 0, 2, 1) + bytes([99]))
+    assert not illegal["is_valid"]
+    assert parse_ics(443, 55000, b"\x16\x03\x01") is None      # not ICS
+
+
+def test_ics_detector_flags_unauthorised_write_not_the_hmi():
+    """The OT detector must catch an attacker's write/scan while leaving the
+    established HMI's routine polling alone."""
+    from prahari.detectors.ics import ICSDetector
+    d = ICSDetector()
+    # HMI establishes itself as the PLC's poller (reads)
+    for i in range(6):
+        d.observe(Flow(ts=i, src_ip="10.42.0.50", dst_ip="10.42.5.10", src_port=40000 + i,
+                       dst_port=502, proto="tcp", ics_proto="modbus", ics_func=3))
+    # attacker enumerates function codes then writes
+    for i, fc in enumerate((1, 2, 4, 7, 17, 5, 6, 16)):
+        d.observe(Flow(ts=10 + i, src_ip="10.42.9.9", dst_ip="10.42.5.10",
+                       src_port=50000 + i, dst_port=502, proto="tcp", ics_proto="modbus",
+                       ics_func=fc, ics_write=fc in (5, 6, 16)))
+    dets = d.evaluate(30.0)
+    hits = {x.src_ip for x in dets}
+    assert "10.42.9.9" in hits, "attacker not flagged"
+    assert "10.42.0.50" not in hits, "the HMI was wrongly flagged"
+
+
+def test_isolation_forest_scores_attack_above_benign():
+    """The unsupervised net separates an obvious outlier from normal traffic."""
+    from prahari.anomaly import IsolationForest
+    import random
+    rng = random.Random(0)
+    normal = [[rng.gauss(0, 1) for _ in range(6)] for _ in range(300)]
+    iso = IsolationForest(n_trees=80, sample_size=128).fit(normal)
+    s_normal = sum(iso.score([rng.gauss(0, 1) for _ in range(6)]) for _ in range(50)) / 50
+    s_outlier = iso.score([12.0] * 6)
+    assert s_outlier > s_normal
+    # round-trips through JSON without changing a score
+    d = iso.to_dict()
+    assert abs(IsolationForest.from_dict(d).score([12.0] * 6) - s_outlier) < 1e-9
+
+
+def test_alerts_carry_mitre_attack_technique():
+    """Every alert lands in a MITRE ATT&CK technique an analyst can pivot on."""
+    flows = TrafficGenerator(seed=4242, jitter=0.2).capture(1800, classes=ALL_ATTACKS)
+    alerts = Engine(window=60.0).run(flows)
+    assert alerts
+    for a in alerts:
+        assert "mitre_technique" in a.evidence and "mitre_tactic" in a.evidence
 
 
 def test_read_only_selftest_passes():

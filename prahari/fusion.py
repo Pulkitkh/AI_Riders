@@ -17,7 +17,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from .detectors.base import Detection
-from .schema import Alert, SEVERITY_BY_CLASS
+from .schema import Alert, MITRE_ATTACK, SEVERITY_BY_CLASS
 
 SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 CORRELATION_WINDOW = 1800.0      # seconds
@@ -92,6 +92,14 @@ class Fusion:
             self.seen[key] = now
 
             confidence = round(min(max(d.score, 0.0), 1.0), 3)
+            # Stamp the MITRE ATT&CK technique so every alert lands in a
+            # kill-chain an analyst can pivot on, not just a class bucket.
+            tech = MITRE_ATTACK.get(d.threat_class)
+            evidence = dict(d.evidence)
+            if tech:
+                evidence["mitre_technique"] = tech[0]
+                evidence["mitre_name"] = tech[1]
+                evidence["mitre_tactic"] = tech[2]
             alert = Alert(
                 alert_id=self._alert_id(d, now),
                 ts_event=d.ts_event,
@@ -103,7 +111,7 @@ class Fusion:
                 dst_ip=d.dst_ip,
                 detector=detector_name,
                 model_version=model_version,
-                evidence=d.evidence,
+                evidence=evidence,
                 flow_ids=d.flow_ids,
                 observed_flows=d.observed_flows,
                 reverse_direction_visible=d.reverse_direction_visible,

@@ -1,0 +1,140 @@
+{
+  "dataset": {
+    "captures": 8,
+    "flows": 94114,
+    "benign": 65272,
+    "composition": {
+      "benign": 65272,
+      "c2_beaconing": 714,
+      "recon_scanning": 7200,
+      "dns_tunnelling": 2080,
+      "volumetric_ddos": 17600,
+      "dga_resolution": 960,
+      "encrypted_malware": 112,
+      "ics_intrusion": 104,
+      "data_exfiltration": 72
+    }
+  },
+  "per_class": {
+    "c2_beaconing": {
+      "tp": 24,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0
+    },
+    "data_exfiltration": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0
+    },
+    "dga_resolution": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0
+    },
+    "dns_tunnelling": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0
+    },
+    "encrypted_malware": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0
+    },
+    "ics_intrusion": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0
+    },
+    "recon_scanning": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0
+    },
+    "volumetric_ddos": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0
+    }
+  },
+  "macro_f1": 1.0,
+  "false_positive_rate": 0.0,
+  "benign_hosts": 840,
+  "benign_flagged": 0,
+  "alerts_per_million_flows": 3814.5,
+  "total_alerts": 359,
+  "anomaly_net": {
+    "attack_hosts": 16,
+    "benign_hosts": 0
+  },
+  "confusion": {
+    "c2_beaconing": {
+      "c2_beaconing": 16
+    },
+    "data_exfiltration": {
+      "data_exfiltration": 8
+    },
+    "dga_resolution": {
+      "dga_resolution": 8
+    },
+    "dns_tunnelling": {
+      "dns_tunnelling": 8
+    },
+    "encrypted_malware": {
+      "c2_beaconing": 8
+    },
+    "ics_intrusion": {
+      "ics_intrusion": 8
+    },
+    "recon_scanning": {
+      "recon_scanning": 8
+    },
+    "volumetric_ddos": {
+      "volumetric_ddos": 8
+    },
+    "benign": {}
+  },
+  "labels": [
+    "c2_beaconing",
+    "data_exfiltration",
+    "dga_resolution",
+    "dns_tunnelling",
+    "encrypted_malware",
+    "ics_intrusion",
+    "recon_scanning",
+    "volumetric_ddos",
+    "benign"
+  ]
+}

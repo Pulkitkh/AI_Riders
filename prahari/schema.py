@@ -13,7 +13,9 @@ from typing import Any
 
 SCHEMA_VERSION = "1.0"
 
-# The six threat classes named in SIH26145, plus the benign class.
+# The six threat classes named in SIH26145, plus benign, an OT/ICS class for
+# industrial protocols, and an unsupervised anomaly class for unknown/zero-day
+# behaviour that no signature or trained class covers.
 CLASSES = (
     "benign",
     "volumetric_ddos",
@@ -23,6 +25,8 @@ CLASSES = (
     "encrypted_malware",
     "recon_scanning",
     "data_exfiltration",
+    "ics_intrusion",
+    "anomalous_traffic",
 )
 
 SEVERITY_BY_CLASS = {
@@ -33,6 +37,23 @@ SEVERITY_BY_CLASS = {
     "encrypted_malware": "high",
     "recon_scanning": "low",
     "data_exfiltration": "critical",
+    "ics_intrusion": "critical",
+    "anomalous_traffic": "medium",
+}
+
+# MITRE ATT&CK mapping — the language a SOC and NTRO actually triage in. Each
+# detector's class carries the technique it evidences, so an alert lands in a
+# kill-chain, not just a bucket. ICS uses the ATT&CK for ICS matrix.
+MITRE_ATTACK = {
+    "volumetric_ddos":   ("T1498", "Network Denial of Service", "Impact"),
+    "c2_beaconing":      ("T1071", "Application Layer Protocol", "Command & Control"),
+    "dga_resolution":    ("T1568.002", "Dynamic Resolution: DGA", "Command & Control"),
+    "dns_tunnelling":    ("T1071.004", "Application Layer Protocol: DNS", "Command & Control"),
+    "encrypted_malware": ("T1573", "Encrypted Channel", "Command & Control"),
+    "recon_scanning":    ("T1046", "Network Service Discovery", "Discovery"),
+    "data_exfiltration": ("T1041", "Exfiltration Over C2 Channel", "Exfiltration"),
+    "ics_intrusion":     ("T0855", "Unauthorized Command Message (ICS)", "Impair Process Control"),
+    "anomalous_traffic": ("—", "Unmapped — zero-day / unknown-behaviour candidate", "Anomaly"),
 }
 
 
@@ -76,6 +97,13 @@ class Flow:
     tls_sni: str | None = None
     tls_self_signed: bool = False
     tls_cert_days: int | None = None
+
+    # OT / ICS metadata, read passively from the protocol header (no payload).
+    ics_proto: str | None = None       # "modbus" | "dnp3" | "iec104"
+    ics_func: int | None = None        # function / control code
+    ics_unit: int | None = None        # unit / station id
+    ics_write: bool = False            # a state-changing command, not a read
+    ics_illegal: bool = False          # function code outside the valid set
 
     # Ground truth. Present only in generated traffic; detectors never read it.
     label: str = "benign"
@@ -221,6 +249,30 @@ THREAT_INFO = {
                    "night to an address the company has no dealings with.",
         "why": "This is the theft itself — intellectual property or citizen data leaving.",
         "action": "Cut the connection, preserve evidence, begin incident response.",
+    },
+    "ics_intrusion": {
+        "title": "OT / ICS Intrusion",
+        "plain": "Someone is sending control commands to industrial equipment — a "
+                 "PLC running a pump, breaker or valve — that they are not authorised "
+                 "to command, or probing it before an attack.",
+        "analogy": "Like a stranger walking into a power-station control room and "
+                   "starting to flip switches nobody assigned to them.",
+        "why": "This is how a cyber-attack becomes a physical one — a tripped grid, "
+               "a stopped pump. It is exactly what NTRO and NCIIPC exist to prevent.",
+        "action": "Isolate the source from the OT network immediately; verify the "
+                  "controller state with the plant operator.",
+    },
+    "anomalous_traffic": {
+        "title": "Unknown / Anomalous Behaviour",
+        "plain": "A device is behaving in a way that does not match normal traffic "
+                 "and does not match any known attack either — a possible new, "
+                 "never-seen-before threat.",
+        "analogy": "Like a guard noticing someone acting strangely — not a known "
+                   "wanted face, just clearly out of place — and taking a closer look.",
+        "why": "Signature-only tools are blind to zero-day attacks; this net catches "
+               "the unknown before it has a name.",
+        "action": "Review the flagged host manually; if confirmed, capture it as a "
+                  "new signature for the specific detectors.",
     },
     "benign": {
         "title": "Benign",

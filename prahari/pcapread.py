@@ -23,6 +23,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Iterator
 
+from .icsparse import ICS_PORTS, parse_ics
 from .quic_crypto import decrypt_client_hello as decrypt_quic_client_hello
 from .schema import Flow
 
@@ -575,6 +576,15 @@ def flows_from_capture(path: str | Path, verbose: bool = False) -> list[Flow]:
                         # on packet shape and destination rarity.
                         f.tls_ja4 = q["marker"]
                         f.tls_sni = None
+            elif pname == "tcp" and f.ics_proto is None and (
+                    dport in ICS_PORTS or sport in ICS_PORTS):
+                ics = parse_ics(dport, sport, app)     # OT header only, no payload
+                if ics:
+                    f.ics_proto = ics["proto"]
+                    f.ics_func = ics.get("func")
+                    f.ics_unit = ics.get("unit")
+                    f.ics_write = ics.get("is_write", False)
+                    f.ics_illegal = not ics.get("is_valid", True)
 
     done.extend(a.flow for a in live.values())
     done.sort(key=lambda x: x.ts)

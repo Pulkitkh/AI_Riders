@@ -45,6 +45,8 @@ DEGRADED = {
     "dns_tunnelling":    "loses response size; query entropy and rate retained",
     "c2_beaconing":      "unaffected — timing is a client-side property",
     "volumetric_ddos":   "unaffected — source entropy is client-side",
+    "ics_intrusion":     "unaffected — the command direction is what we read",
+    "anomalous_traffic": "unaffected — flow-shape features are client-side",
 }
 
 

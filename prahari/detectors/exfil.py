@@ -59,7 +59,7 @@ class ExfilDetector(Detector):
         self._sink: list | None = None
 
     def observe(self, flow: Flow) -> None:
-        if flow.proto == "tcp":
+        if flow.proto == "tcp" and not flow.ics_proto:
             self.by_src[flow.src_ip].append(flow)
 
     @staticmethod
