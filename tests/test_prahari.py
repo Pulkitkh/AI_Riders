@@ -448,6 +448,29 @@ def test_model_integrity_manifest_verifies():
     assert ok is not False, f"model integrity failed: {bad}"
 
 
+def test_large_pcap_is_streamed_not_loaded_whole(tmp_path=None):
+    """A large classic pcap must be read one packet at a time (bounded memory),
+    and the streamed output must match the in-memory reader exactly."""
+    import struct, pathlib, tempfile
+    import prahari.pcapread as pc
+    hdr = b"\xd4\xc3\xb2\xa1" + struct.pack("<HHiIII", 2, 4, 0, 0, 65535, 1)
+    body = b""
+    for i in range(64):
+        payload = b"\xaa" * 14 + b"\x45" + b"\x00" * 30
+        body += struct.pack("<IIII", 1000 + i, i, len(payload), len(payload)) + payload
+    p = pathlib.Path(tempfile.mkdtemp()) / "t.pcap"
+    p.write_bytes(hdr + body)
+    mem = list(pc._read_pcap(p.read_bytes()))
+    stream = list(pc._stream_pcap(p))
+    assert mem == stream and len(mem) == 64
+    old = pc._STREAM_THRESHOLD
+    try:
+        pc._STREAM_THRESHOLD = 1        # force the streaming path
+        assert list(pc.read_capture(p)) == mem
+    finally:
+        pc._STREAM_THRESHOLD = old
+
+
 def test_flow_backed_alerts_carry_a_flow_id():
     """PS schema requirement: any alert raised by flow traffic must carry at
     least one non-empty flow id (the demo screenshot must never show '—')."""

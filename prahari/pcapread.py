@@ -121,12 +121,46 @@ def _read_pcapng(data: bytes) -> Iterator[tuple[float, int, bytes]]:
         off += blen
 
 
+_PCAP_MAGICS = {b"\xa1\xb2\xc3\xd4": (">", 1e-6), b"\xd4\xc3\xb2\xa1": ("<", 1e-6),
+                b"\xa1\xb2\x3c\x4d": (">", 1e-9), b"\x4d\x3c\xb2\xa1": ("<", 1e-9)}
+_STREAM_THRESHOLD = 8 * 1024 * 1024        # stream classic pcaps larger than this
+
+
 def read_capture(path: str | Path) -> Iterator[tuple[float, int, bytes]]:
-    data = Path(path).read_bytes()
+    """Yield (ts, linktype, packet_bytes). A large CLASSIC pcap is streamed one
+    packet at a time from disk so a multi-GB capture never duplicates into RAM;
+    small files and pcapng (whose block structure needs random access here) are
+    read whole."""
+    p = Path(path)
+    with p.open("rb") as fh:
+        head = fh.read(4)
+    if head != b"\x0a\x0d\x0d\x0a" and head in _PCAP_MAGICS and p.stat().st_size > _STREAM_THRESHOLD:
+        yield from _stream_pcap(p)
+        return
+    data = p.read_bytes()
     if data[:4] == b"\x0a\x0d\x0d\x0a":
         yield from _read_pcapng(data)
     else:
         yield from _read_pcap(data)
+
+
+def _stream_pcap(path: Path) -> Iterator[tuple[float, int, bytes]]:
+    """Classic-pcap reader that holds only one packet in memory at a time."""
+    with path.open("rb") as fh:
+        header = fh.read(24)
+        if len(header) < 24:
+            return
+        endian, frac = _PCAP_MAGICS[header[:4]]
+        linktype = struct.unpack(endian + "I", header[20:24])[0]
+        while True:
+            rec = fh.read(16)
+            if len(rec) < 16:
+                return
+            ts_sec, ts_frac, incl, _orig = struct.unpack(endian + "IIII", rec)
+            pkt = fh.read(incl)
+            if len(pkt) < incl:
+                return
+            yield ts_sec + ts_frac * frac, linktype, pkt
 
 
 # =============================================================================

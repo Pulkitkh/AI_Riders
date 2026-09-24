@@ -493,8 +493,28 @@ async function loadMetrics() {
   ]);
   $("#metrics-caveats").innerHTML = d.caveats.map((c) =>
     `<li><span class="muted">▸</span> ${esc(c)}</li>`).join("");
+  drawConfusion(d.confusion, d.labels);
   drawSweep(d.jitter_sweep);
 }
+function drawConfusion(conf, labels) {
+  const el = $("#metrics-confusion");
+  if (!el || !conf || !labels || !labels.length) { if (el) el.innerHTML = ""; return; }
+  const abbr = (s) => label(s).replace(/ .*/, "").slice(0, 6);
+  let h = '<table class="confusion"><thead><tr><th></th>' +
+    labels.map((c) => `<th class="num" title="${esc(label(c))}">${esc(abbr(c))}</th>`).join("") +
+    "</tr></thead><tbody>";
+  for (const t of labels) {
+    h += `<tr><th title="${esc(label(t))}">${esc(abbr(t))}</th>`;
+    for (const p of labels) {
+      const v = (conf[t] && conf[t][p]) || 0;
+      const cls = v === 0 ? "muted" : (t === p ? "diag" : "off");
+      h += `<td class="num ${cls}">${v || ""}</td>`;
+    }
+    h += "</tr>";
+  }
+  el.innerHTML = h + "</tbody></table>";
+}
+
 function drawSweep(pts) {
   if (!pts || !pts.length) return;
   const W = 460, H = 190, pad = 34;

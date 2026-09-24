@@ -465,3 +465,11 @@ button.btn.sm { min-height: 34px; padding: 6px 11px; font-size: 12px; }
   color: var(--ink-3); min-width: 74px; flex: none; }
 .explain .row .txt { color: var(--ink-2); line-height: 1.5; }
 .explain .analogy { font-style: italic; color: var(--ink-2); }
+
+/* strict confusion matrix (metrics tab) */
+table.confusion { font-size: 11px; border-collapse: collapse; width: 100%; }
+table.confusion th, table.confusion td { padding: 4px 6px; text-align: center; border: 1px solid var(--border); }
+table.confusion th { color: var(--muted); font-weight: 600; }
+table.confusion td.diag { background: var(--tint-good); color: var(--good); font-weight: 700; }
+table.confusion td.off { background: var(--tint-critical); color: var(--critical); font-weight: 700; }
+table.confusion td.muted { color: var(--border); }
