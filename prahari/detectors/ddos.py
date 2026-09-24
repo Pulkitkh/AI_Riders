@@ -43,9 +43,10 @@ class DDoSDetector(Detector):
         for dst, flows in self.by_dst.items():
             n = len(flows)
             base = self.baseline_rate.get(dst, 0.0)
-            self.baseline_rate[dst] = 0.8 * base + 0.2 * n      # update after use
 
             if n < self.MIN_FLOWS:
+                # a quiet window is a clean reference period — safe to learn from
+                self.baseline_rate[dst] = 0.8 * base + 0.2 * n
                 continue
             srcs = [f.src_ip for f in flows]
             ent = shannon_entropy(srcs)
@@ -84,6 +85,12 @@ class DDoSDetector(Detector):
             if amplification:
                 score += 0.25          # a clear reflector signature
             score = min(score, 1.0)
+
+            # Freeze the baseline during an attack window: an adaptive reference
+            # that learns from the flood would quietly accept it as the new normal
+            # and suppress later alerts. Only benign windows update the baseline.
+            if score < self.threshold:
+                self.baseline_rate[dst] = 0.8 * base + 0.2 * n
 
             if score >= self.threshold:
                 out.append(Detection(

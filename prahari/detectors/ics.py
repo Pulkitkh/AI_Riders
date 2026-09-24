@@ -18,35 +18,58 @@ means "not the host that normally reads this PLC", with no configuration.
 """
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
+from pathlib import Path
 
 from ..schema import Flow
 from .base import Detection, Detector
 
+_POLICY_FILE = Path(__file__).resolve().parents[1] / "models" / "ot_policy.json"
+
 
 class ICSDetector(Detector):
     name = "ics-guard"
-    model_version = "0.2.0"
+    model_version = "0.3.0"
     threat_class = "ics_intrusion"
     threshold = 0.55
 
     FUNC_SCAN = 5              # distinct function codes from one source = enumeration
     POLLER_READS = 3          # reads before a host is trusted as a controller's poller
 
-    def __init__(self) -> None:
+    def __init__(self, policy: dict | None = None) -> None:
         self.by_src: dict[str, list[Flow]] = defaultdict(list)
         # persistent across windows: who legitimately polls each controller
         self.reads_to: dict[str, Counter] = defaultdict(Counter)   # dst -> Counter(src)
+        # OPTIONAL asset-role policy: an operator can declare the authorised
+        # master(s) per controller and maintenance windows. The learned pollers
+        # are then ONE corroborating signal, not the sole authority — which is
+        # what a real plant needs (HMI failover, a new master, planned service).
+        self.policy = policy if policy is not None else self._load_policy()
+        self.authorized: dict[str, set[str]] = {
+            c: set(v) for c, v in (self.policy.get("authorized", {}) or {}).items()}
+        self.maintenance = [tuple(w) for w in (self.policy.get("maintenance", []) or [])]
+
+    @staticmethod
+    def _load_policy() -> dict:
+        try:
+            return json.loads(_POLICY_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def _in_maintenance(self, ts: float) -> bool:
+        return any(a <= ts <= b for a, b in self.maintenance)
 
     def observe(self, flow: Flow) -> None:
         if flow.ics_proto:
             self.by_src[flow.src_ip].append(flow)
 
     def _established_pollers(self, controller: str) -> set[str]:
-        # only hosts that polled this controller in PRIOR windows count as
-        # legitimate — a host's own recon reads this window do not legitimise
-        # the writes it issues in the same window.
-        return {s for s, n in self.reads_to[controller].items() if n >= self.POLLER_READS}
+        # legitimate = learned (polled this controller in PRIOR windows) UNION
+        # any operator-declared authorised masters for it. A host's own recon
+        # reads this window do not legitimise the writes it issues the same window.
+        learned = {s for s, n in self.reads_to[controller].items() if n >= self.POLLER_READS}
+        return learned | self.authorized.get(controller, set())
 
     def evaluate(self, window_end: float) -> list[Detection]:
         out: list[Detection] = []
@@ -58,8 +81,11 @@ class ICSDetector(Detector):
             proto = flows[-1].ics_proto
 
             # an unauthorised writer is one issuing commands to a controller it
-            # is not an established poller of
-            unauth = [f for f in writes if src not in self._established_pollers(f.dst_ip)]
+            # is not an established poller of — unless inside a declared
+            # maintenance window, when writes from any host are expected.
+            unauth = [f for f in writes
+                      if src not in self._established_pollers(f.dst_ip)
+                      and not self._in_maintenance(f.ts)]
 
             score = 0.0
             reasons = []

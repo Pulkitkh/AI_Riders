@@ -227,13 +227,19 @@ THREAT_INFO = {
         "action": "Block the domain, inspect the host, tighten DNS egress rules.",
     },
     "encrypted_malware": {
-        "title": "Malware in Encrypted Traffic",
-        "plain": "An encrypted connection whose software fingerprint matches malware, "
-                 "not a normal browser — spotted without decrypting anything.",
-        "analogy": "Like recognising a burglar by their gait on CCTV without ever "
-                   "opening the bag they carry.",
-        "why": "Modern malware hides inside HTTPS; the fingerprint gives it away.",
-        "action": "Investigate the host and destination; the payload was never opened.",
+        "title": "Suspicious Encrypted Session",
+        "plain": "An encrypted connection whose software fingerprint (JA4) is rare "
+                 "on this network and matches known-bad tooling rather than a normal "
+                 "browser, with an unusual packet-timing shape — flagged without "
+                 "decrypting anything. This is a fingerprint + rarity signal, not a "
+                 "verdict on the payload, which was never opened.",
+        "analogy": "Like recognising a suspicious visitor by their gait on CCTV "
+                   "without ever opening the bag they carry — worth a closer look, "
+                   "not a conviction.",
+        "why": "Modern malware hides inside HTTPS; a rare, known-bad fingerprint is "
+               "a strong lead an analyst should investigate.",
+        "action": "Investigate the host and destination; the payload was never "
+                  "opened, so confirm before acting.",
     },
     "recon_scanning": {
         "title": "Reconnaissance / Port Scan",

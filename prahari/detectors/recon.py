@@ -36,12 +36,33 @@ class ReconDetector(Detector):
             targets = len({(f.dst_ip, f.dst_port) for f in flows})
             if targets < self.MIN_TARGETS:
                 continue
-            unanswered = sum(1 for f in flows if not f.completed) / len(flows)
-            if unanswered < self.UNANSWERED_FLOOR:
-                continue
 
-            score = min(targets / 300.0, 1.0) * 0.55 + unanswered * 0.45
+            # Can we see the reverse direction at all this window? A one-way tap
+            # never observes a SYN-ACK or inbound bytes, so "unanswered" would be
+            # 1.0 for *everything* and cannot distinguish "no response" from
+            # "response not observed". Detect that and degrade honestly instead of
+            # scoring an unavailable feature as if it were evidence.
+            reverse_visible = any(f.synack or f.bytes_in for f in flows)
+            unanswered = sum(1 for f in flows if not f.completed) / len(flows)
+
+            caveat = None
+            if reverse_visible:
+                if unanswered < self.UNANSWERED_FLOOR:
+                    continue
+                score = min(targets / 300.0, 1.0) * 0.55 + unanswered * 0.45
+                unanswered_ev = round(unanswered, 3)
+            else:
+                # Degraded: lean entirely on fan-out (a genuine one-way signal),
+                # require a larger fan-out before alerting, and do not claim the
+                # unanswered ratio as evidence.
+                if targets < self.MIN_TARGETS * 1.5:
+                    continue
+                score = min(targets / 250.0, 1.0) * 0.70
+                unanswered_ev = "n/a (reverse direction not observed)"
+                caveat = ("degraded: one-way capture — scan inferred from fan-out "
+                          "alone; SYN-ACK/response not observable")
             score = min(score, 1.0)
+
             if score >= self.threshold:
                 out.append(Detection(
                     threat_class=self.threat_class,
@@ -51,11 +72,13 @@ class ReconDetector(Detector):
                     ts_event=min(f.ts for f in flows),
                     observed_flows=len(flows),
                     flow_ids=[f.flow_id for f in flows[:8]],
+                    reverse_direction_visible=reverse_visible,
+                    caveat=caveat,
                     evidence={
                         "distinct_ports": len(ports),
                         "distinct_hosts": len(hosts),
                         "distinct_targets": targets,
-                        "unanswered_ratio": round(unanswered, 3),
+                        "unanswered_ratio": unanswered_ev,
                     },
                 ))
         return out

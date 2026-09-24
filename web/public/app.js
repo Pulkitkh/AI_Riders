@@ -14,7 +14,7 @@ const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 const CLASS_LABEL = {
   volumetric_ddos: "Volumetric DDoS", c2_beaconing: "C2 beaconing",
   dga_resolution: "DGA resolution", dns_tunnelling: "DNS tunnelling",
-  encrypted_malware: "Malware in TLS", recon_scanning: "Recon scanning",
+  encrypted_malware: "Suspicious TLS session", recon_scanning: "Recon scanning",
   data_exfiltration: "Data exfiltration", benign: "Benign",
 };
 const label = (c) => CLASS_LABEL[c] || c;
