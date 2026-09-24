@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,9 +29,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from web.router import MAX_UPLOAD, dispatch      # noqa: E402
+from web.router import CORS_ORIGIN, MAX_UPLOAD, dispatch      # noqa: E402
 
 PUBLIC = Path(__file__).resolve().parent / "public"
+
+# Demo controls (live capture start/stop and — most sensitively — attack traffic
+# injection) are DISABLED unless explicitly enabled, and even then are limited to
+# localhost callers or callers presenting a shared token. A production sensor
+# ships with neither set, so the injector is simply unreachable.
+DEMO_MODE = os.environ.get("PRAHARI_DEMO", "").lower() in ("1", "true", "yes", "on")
+API_TOKEN = os.environ.get("PRAHARI_API_TOKEN", "").strip()
 
 mimetypes.add_type("application/json", ".json")
 mimetypes.add_type("text/javascript", ".js")
@@ -46,7 +54,8 @@ def _get_sensor(autostart: bool = False):
     global SENSOR
     if SENSOR is None:
         from sensor.live import LiveSensor
-        SENSOR = LiveSensor(iface=SENSOR_IFACE)
+        ledger_path = os.environ.get("PRAHARI_LEDGER", "data/live_alerts.jsonl")
+        SENSOR = LiveSensor(iface=SENSOR_IFACE, ledger_path=ledger_path or None)
         if autostart:
             SENSOR.start()
     return SENSOR
@@ -71,9 +80,33 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, obj, status: int = 200) -> None:
         raw = json.dumps(obj, allow_nan=False).encode("utf-8")
-        self._send(status, {"Content-Type": "application/json; charset=utf-8",
-                            "Content-Length": str(len(raw)), "Cache-Control": "no-store",
-                            "Access-Control-Allow-Origin": "*"}, raw)
+        headers = {"Content-Type": "application/json; charset=utf-8",
+                   "Content-Length": str(len(raw)), "Cache-Control": "no-store",
+                   "X-Content-Type-Options": "nosniff"}
+        if CORS_ORIGIN:
+            headers["Access-Control-Allow-Origin"] = CORS_ORIGIN
+            headers["Vary"] = "Origin"
+        self._send(status, headers, raw)
+
+    # -- authorization for control-plane endpoints -------------------------
+    def _client_is_local(self) -> bool:
+        ip = self.client_address[0] if self.client_address else ""
+        return ip in ("127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost")
+
+    def _control_allowed(self, injection: bool = False) -> tuple[bool, str]:
+        """Start/stop/attack are control-plane actions. Require localhost OR a
+        valid token; attack injection additionally requires demo mode. A
+        production sensor (no PRAHARI_DEMO, no token) exposes none of them."""
+        if injection and not DEMO_MODE:
+            return False, "attack injection is disabled (set PRAHARI_DEMO=1 for a demo build)"
+        if API_TOKEN:
+            tok = self.headers.get("X-PRAHARI-Token", "")
+            if tok != API_TOKEN:
+                return False, "missing or invalid X-PRAHARI-Token"
+            return True, ""
+        if self._client_is_local():
+            return True, ""
+        return False, "control endpoints are restricted to localhost; set PRAHARI_API_TOKEN to allow remote control"
 
     # -- live endpoints (server only) --------------------------------------
     def _live(self, path: str, query: dict, body: bytes) -> bool:
@@ -90,6 +123,10 @@ class Handler(BaseHTTPRequestHandler):
             return True
 
         if path == "/api/live/start":
+            ok, why = self._control_allowed()
+            if not ok:
+                self._json({"started": False, "reason": why}, 403)
+                return True
             s = _get_sensor()
             started = s.start()
             self._json({"started": started, "status": s.status()},
@@ -97,6 +134,10 @@ class Handler(BaseHTTPRequestHandler):
             return True
 
         if path == "/api/live/stop":
+            ok, why = self._control_allowed()
+            if not ok:
+                self._json({"stopped": False, "reason": why}, 403)
+                return True
             s = _get_sensor()
             s.stop()
             self._json({"stopped": True, "status": s.status()})
@@ -107,6 +148,10 @@ class Handler(BaseHTTPRequestHandler):
             return True
 
         if path == "/api/live/attack":
+            allowed, why = self._control_allowed(injection=True)
+            if not allowed:
+                self._json({"launched": False, "reason": why}, 403)
+                return True
             name = query.get("name", "")
             ok, why = attack.available()
             if not ok:
@@ -136,7 +181,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        if CORS_ORIGIN:
+            self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
+            self.send_header("Vary", "Origin")
         self.end_headers()
         try:
             self.wfile.write(b": connected\n\n")

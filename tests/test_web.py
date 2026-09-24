@@ -140,10 +140,21 @@ def test_unknown_route_404():
     assert s == 404 and "routes" in d
 
 
-def test_cors_preflight():
+def test_cors_is_same_origin_by_default():
+    # Security posture: no wildcard CORS. A security console must not be openly
+    # cross-origin callable; the header is emitted only when PRAHARI_CORS_ORIGIN
+    # explicitly allowlists an origin.
     status, headers, _ = dispatch("OPTIONS", "/api/analyze")
     assert status == 204
-    assert headers["Access-Control-Allow-Origin"] == "*"
+    assert "Access-Control-Allow-Origin" not in headers
+
+
+def test_errors_do_not_leak_tracebacks():
+    # A 500 must not include an internal traceback unless PRAHARI_DEBUG is set.
+    status, _, body = dispatch("POST", "/api/pcap", body=b"\x00\x01not a pcap")
+    import json as _json
+    payload = _json.loads(body.decode("utf-8"))
+    assert "trace" not in payload
 
 
 def test_service_degraded_measures_retention():

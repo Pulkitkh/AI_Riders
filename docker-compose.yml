@@ -1,12 +1,37 @@
-# One-command live deploy for a demo VM.
-#   docker compose up --build
-# Host networking + NET_RAW give the sensor a real tap on the host's traffic.
+# PRAHARI deployment profiles.
+#
+# This file is the DEMO/LAB profile. Host networking + NET_RAW give the sensor a
+# real tap on the host's interfaces, which is what a lab capture needs — and
+# exactly what a hardened appliance must NOT grant broadly. The differences
+# between this and a production appliance are called out inline and in
+# docs/SECURITY.md; do not ship the demo profile as the appliance.
+#
+#   docker compose up --build            # lab/demo
+#
 services:
   prahari:
     build: .
-    network_mode: host          # real capture on the host's interfaces
-    cap_add: [NET_RAW]
+    # LAB ONLY: host networking exposes every host interface to the process.
+    # A hardened appliance instead attaches the sensor to a single, mirror-only
+    # capture interface (a SPAN/tap port) with no route to the protected side —
+    # see docs/SECURITY.md ("OS / network layer").
+    network_mode: host
+    cap_drop: [ALL]
+    cap_add: [NET_RAW]            # raw capture only; nothing else
+    security_opt:
+      - no-new-privileges:true
+    read_only: true              # immutable root filesystem
+    tmpfs:
+      - /tmp
     environment:
-      IFACE: eth0               # set to the interface you want to monitor
+      IFACE: eth0                # interface to monitor
       PORT: "8000"
+      # Demo controls are OFF by default. Attack injection and remote control
+      # stay unreachable unless these are set — never set them on an appliance.
+      PRAHARI_DEMO: "0"          # "1" enables the demo attack injector (lab only)
+      # PRAHARI_API_TOKEN: ""    # set to require a token for control endpoints
+      # PRAHARI_CORS_ORIGIN: ""  # set to allow a specific cross-origin dashboard
     restart: unless-stopped
+    # Hardened appliance additionally: egress firewall DROP toward the protected
+    # side, a dedicated management interface for the SOC/CERT-In feed only, and
+    # signed model/software bundles verified before activation.

@@ -32,17 +32,28 @@ AmbientCapabilities=CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_RAW
 NoNewPrivileges=true
 
-# Sandboxing — the sensor writes nothing and needs almost no filesystem.
+# Sandboxing — the sensor needs almost no filesystem: code read-only, and a
+# single writable state directory for the append-only hash-chained ledger.
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadOnlyPaths=/opt/prahari
+StateDirectory=prahari
+ReadWritePaths=/var/lib/prahari
+Environment=PRAHARI_LEDGER=/var/lib/prahari/live_alerts.jsonl
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_PACKET
 RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
+
+# NOTE: RestrictAddressFamilies limits socket *types*, it does NOT enforce
+# "no egress". Egress denial toward the protected side is a LAYER-2 property
+# (physical diode / mirror-only NIC) plus a host firewall DROP rule, not an
+# address-family restriction. See docs/SECURITY.md. On this appliance the
+# capture NIC is mirror-only and a firewall DROPs any egress toward the
+# protected subnet; the management NIC routes only to the SOC/CERT-In collector.
 
 [Install]
 WantedBy=multi-user.target

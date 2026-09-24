@@ -18,6 +18,7 @@ Supported link types: Ethernet, Linux "cooked" SLL and SLL2 (what
 from __future__ import annotations
 
 import hashlib
+import os
 import struct
 from collections import defaultdict
 from pathlib import Path
@@ -26,6 +27,14 @@ from typing import Iterator
 from .icsparse import ICS_PORTS, parse_ics
 from .quic_crypto import decrypt_client_hello as decrypt_quic_client_hello
 from .schema import Flow
+
+# SIH26145 constraint (b): TLS/QUIC are analysed by METADATA ONLY — no payload
+# decryption. A QUIC Initial is technically decryptable with RFC 9001's public
+# salt (no secret is ever held), but a strict reading of the constraint forbids
+# decrypting packet contents at all. The judge/default build therefore never
+# decrypts: it recognises QUIC from the public header only. The research path
+# (q-JA4 via public-salt decryption) is opt-in and off by default.
+ALLOW_QUIC_DECRYPT = os.environ.get("PRAHARI_ALLOW_QUIC_DECRYPT", "").lower() in ("1", "true", "yes", "on")
 
 # --- link types --------------------------------------------------------------
 LINKTYPE_NULL, LINKTYPE_ETHERNET = 0, 1
@@ -557,23 +566,24 @@ def flows_from_capture(path: str | Path, verbose: bool = False) -> list[Flow]:
                         f.tls_self_signed = cert["self_signed"]
                         f.tls_cert_days = cert["cert_days"]
             elif pname == "udp" and dport == 443 and f.tls_ja4 is None:
-                rec = decrypt_quic_client_hello(app)
-                if rec:
-                    # QUIC Initial decrypted with the PUBLIC salt — no secret is
-                    # ever held (see prahari.quic_crypto). The ClientHello inside
-                    # yields a real "q…" JA4, exactly like the TCP path.
-                    tls = parse_tls_client_hello(rec, transport="q")
-                    if tls:
-                        f.tls_ja4 = tls["ja4"]
-                        f.tls_ja3 = tls["ja3_hash"]
-                        f.tls_sni = tls["sni"]
+                # Metadata-only by default (constraint b): recognise QUIC from the
+                # public header, never decrypt the payload.
+                if ALLOW_QUIC_DECRYPT:
+                    rec = decrypt_quic_client_hello(app)
+                    if rec:
+                        # Opt-in research path only. QUIC Initial decrypted with the
+                        # PUBLIC salt — no secret is ever held (see quic_crypto).
+                        tls = parse_tls_client_hello(rec, transport="q")
+                        if tls:
+                            f.tls_ja4 = tls["ja4"]
+                            f.tls_ja3 = tls["ja3_hash"]
+                            f.tls_sni = tls["sni"]
                 if f.tls_ja4 is None:
                     q = parse_quic_initial(app)
                     if q:
-                        # Not a decryptable Initial (a later packet, an unknown
-                        # version): fall back to recognising it as QUIC so the
-                        # flow is not invisible and the detector still scores it
-                        # on packet shape and destination rarity.
+                        # Recognise the flow as QUIC from the public header only, so
+                        # it is not invisible and the detector still scores it on
+                        # packet shape and destination rarity — no decryption.
                         f.tls_ja4 = q["marker"]
                         f.tls_sni = None
             elif pname == "tcp" and f.ics_proto is None and (

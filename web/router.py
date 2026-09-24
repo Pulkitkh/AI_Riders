@@ -8,6 +8,7 @@ differently.
 from __future__ import annotations
 
 import json
+import os
 import traceback
 from typing import Any
 from urllib.parse import parse_qs
@@ -17,6 +18,13 @@ from . import service
 MAX_UPLOAD = 4 * 1024 * 1024        # Vercel caps request bodies at ~4.5 MB
 
 JSON = "application/json; charset=utf-8"
+
+# Security posture (all opt-in; safe defaults):
+#   PRAHARI_DEBUG       — include exception tracebacks in error responses (dev only)
+#   PRAHARI_CORS_ORIGIN — explicit allowed origin; unset means SAME-ORIGIN only
+#                         (no Access-Control-Allow-Origin header, not a wildcard)
+DEBUG = os.environ.get("PRAHARI_DEBUG", "").lower() in ("1", "true", "yes", "on")
+CORS_ORIGIN = os.environ.get("PRAHARI_CORS_ORIGIN", "").strip()
 
 
 def _b(v: Any, default: bool = False) -> bool:
@@ -56,8 +64,12 @@ def dispatch(method: str, path: str, query: str = "",
     try:
         payload, status = _route(method, path, q, body)
     except Exception as exc:                         # noqa: BLE001 - boundary
-        payload = {"error": type(exc).__name__, "message": str(exc),
-                   "trace": traceback.format_exc()[-1200:]}
+        # Never leak internal paths / tracebacks to clients in production.
+        traceback.print_exc()                        # server-side log only
+        payload = {"error": "internal error"}
+        if DEBUG:
+            payload = {"error": type(exc).__name__, "message": str(exc),
+                       "trace": traceback.format_exc()[-1200:]}
         status = 500
 
     raw = json.dumps(payload, allow_nan=False).encode("utf-8")
@@ -66,10 +78,14 @@ def dispatch(method: str, path: str, query: str = "",
         "Content-Length": str(len(raw)),
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     }
+    # Same-origin by default: only emit CORS headers when an origin is explicitly
+    # allowlisted. A security console should not be openly cross-origin callable.
+    if CORS_ORIGIN:
+        headers["Access-Control-Allow-Origin"] = CORS_ORIGIN
+        headers["Vary"] = "Origin"
+        headers["Access-Control-Allow-Headers"] = "Content-Type, X-PRAHARI-Token"
+        headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return status, headers, raw
 
 

@@ -82,11 +82,24 @@ class EventBus:
 class LiveSensor:
     """Owns the capture thread, the engine, and the running statistics."""
 
-    def __init__(self, iface: str = "lo", window: float = 5.0, bus: EventBus | None = None):
+    def __init__(self, iface: str = "lo", window: float = 5.0, bus: EventBus | None = None,
+                 ledger_path: str | None = "data/live_alerts.jsonl"):
         self.iface = iface
         self.window = window
         self.bus = bus or EventBus()
-        self.engine = Engine(window=window, on_alert=self._on_alert)
+        # A persistent, append-only, hash-chained ledger is attached to the LIVE
+        # engine by default, so operational alerts are durably chained exactly as
+        # the dashboard implies — not only in the separate tamper demo. Pass
+        # ledger_path=None to disable (e.g. a read-only filesystem).
+        ledger = None
+        if ledger_path:
+            try:
+                from prahari.ledger import AlertLedger
+                ledger = AlertLedger(ledger_path)
+            except OSError:
+                ledger = None
+        self.ledger = ledger
+        self.engine = Engine(window=window, ledger=ledger, on_alert=self._on_alert)
         self.capture = LiveCapture(iface=iface)
         self._thread: threading.Thread | None = None
         self._running = False
