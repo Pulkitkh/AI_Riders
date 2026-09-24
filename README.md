@@ -104,10 +104,13 @@ python3 -m prahari.cli selftest      # prove the read-only constraints
 python3 -m prahari.cli replay        # replay a capture, watch alerts appear
 python3 -m web.server               # dashboard on http://localhost:8000
 
-python3 tests/test_prahari.py        # 25 engine tests
-python3 eval/evaluate.py             # held-out evaluation
-python3 eval/jitter_sweep.py         # the headline experiment
+python3 tests/test_prahari.py        # 33 engine tests
+python3 tests/test_web.py            # 16 web tests
+python3 eval/report.py               # THE canonical evaluation -> eval/report.json
+python3 eval/unseen_family.py        # the zero-day / unseen-family (OOD) experiment
+python3 eval/jitter_sweep.py         # the C2-jitter robustness experiment
 python3 scripts/train.py             # refit the models from scratch
+python3 scripts/calibrate.py         # refit score calibration
 ```
 
 Or `make demo`.
@@ -142,47 +145,59 @@ Everything below runs. Nothing here is a mock, a stub, or a screenshot.
 All numbers below are produced by the code in this repository. Re-run the
 commands to reproduce them.
 
-### Detection, on held-out captures (`python3 eval/evaluate.py`)
+### One canonical evaluation (`python3 eval/report.py`)
 
-Five captures with seeds and jitter settings **never used in training**.
+There is exactly **one** evaluation command and **one** artifact
+(`eval/report.json`). Every number in this README, the deck and the web viewer
+is read from it — nothing is computed a second way. Eight held-out captures
+(97,172 flows, 70% benign, 840 benign hosts) with seeds **and** jitter never
+used in training or calibration. Scoring is **strict multi-label per class — no
+class-equivalence credit**: a wrong class counts as wrong.
 
-| Threat class | Precision | Recall | F1 |
-|---|---:|---:|---:|
-| Volumetric DDoS | 1.000 | 1.000 | 1.000 |
-| C2 beaconing | 1.000 | 1.000 | 1.000 |
-| DGA resolution | 1.000 | 1.000 | 1.000 |
-| DNS tunnelling | 1.000 | 1.000 | 1.000 |
-| Malware in TLS | 1.000 | 1.000 | 1.000 |
-| Recon / scanning | 1.000 | 1.000 | 1.000 |
-| **Data exfiltration** | **1.000** | 0.800 | 0.889 |
-| **macro F1** | | | **0.984** |
+| Threat class | Precision | Recall | F1 | tp/fp/fn |
+|---|---:|---:|---:|---:|
+| Volumetric DDoS | 1.000 | 1.000 | 1.000 | 8/0/0 |
+| C2 beaconing | 1.000 | 1.000 | 1.000 | 24/0/0 |
+| DGA resolution | 1.000 | 1.000 | 1.000 | 8/0/0 |
+| DNS tunnelling | 1.000 | 1.000 | 1.000 | 8/0/0 |
+| Encrypted (TLS) | 1.000 | 1.000 | 1.000 | 24/0/0 |
+| Recon / scanning | 1.000 | 1.000 | 1.000 | 8/0/0 |
+| OT/ICS intrusion | 1.000 | 1.000 | 1.000 | 24/0/0 |
+| **Data exfiltration** | **0.889** | 1.000 | 0.941 | 8/1/0 |
+| **STRICT macro-F1** | | | **0.993** | |
 
-Exfiltration is the honest one, and it is now a **learned** detector. The hard
-negative the generator includes on purpose is the nightly backup server, which
-inverts its outbound-to-inbound byte ratio exactly like exfiltration — no
-threshold on volume or ratio can separate the two. The fitted model separates
-them on one feature a hand-set coefficient could never exploit: **`dst_external`**
-— the backup sends its volume to an *internal* file server, real exfiltration
-leaves the network. That took exfil precision from 0.50 (five false positives,
-all that one host) to **1.00 with the backup no longer flagged**, trading a
-little recall (one missed window) for a queue an analyst can actually work. The
-benign-only negative control is now completely silent.
+- **Host-detection F1: 1.000** — did we catch that the host is malicious at all,
+  reported separately, never instead of the strict number.
+- **False positives: 0 events on 840 benign hosts (0.00% host FPR).** The one
+  residual error is a *classification* error, not a benign false alarm: a single
+  encrypted-malware host scored as `data_exfiltration` (see the confusion matrix
+  in `report.json`). We show it rather than smoothing it away.
+- **Calibration: ECE 0.193, Brier 0.125** over 374 alerts. Confidence is
+  isotonic-calibrated where a class has enough mixed-outcome volume to fit one
+  (`scripts/calibrate.py`), and falls back to the raw score otherwise — the
+  schema documents exactly that.
+- **Alert volume: ~3.6k alerts per million flows.**
 
-**Alert volume: ~87 alerts/hour.** This is the metric a SOC lead actually cares
-about, and it is reported alongside recall because recall is useless if the
-queue is unworkable.
+### The unseen-attack (zero-day / OOD) experiment (`python3 eval/unseen_family.py`)
 
-### Throughput and latency (`python3 -m prahari.cli bench`)
+A fair "previously-unseen behaviour" claim needs a family absent from **all**
+training. `novel_unseen` is a long-lived covert channel on a non-standard port
+that matches no signature and no trained class. Across held-out seeds the
+**unsupervised anomaly net catches it (recall 1.00)** while **every supervised
+detector correctly stays silent** and benign false-flags stay at 0. That is the
+whole and only basis on which we use the word "unseen".
 
-```
-flows_processed  85,367      flows_per_sec    14,387
-windows             240      latency p50      31.7 s
-alerts              442      latency p95      63.9 s
-```
+### Throughput and latency (`eval/report.py`, `python3 -m prahari.cli bench`)
 
-Latency is **bounded below by the window size**. A detector aggregating over 60
-seconds cannot alert faster than 60 seconds, and claiming otherwise would be
-incoherent. We publish the bound rather than a flattering single number.
+- **Processing throughput ~10.8k flows/sec, full pipeline** (parse → detect →
+  fuse → calibrate → ledger) on one core; **~0.09 ms/flow** compute latency.
+  This is the *full-pipeline* boundary — stated explicitly so it is never
+  confused with a detector-only micro-benchmark.
+- **Detection-window delay** (event → alert) is **bounded by the analysis
+  window**: p50 ~38 s, p95 ~60 s, p99 ~80 s at the 60 s batch window. The window
+  is a deployment tradeoff — the **live sensor default is 5 s** — so detection
+  delay is a knob, not a fixed 60 s. Per-flow *processing* latency is sub-millisecond
+  and is reported separately, so the two are never conflated.
 
 ### The jitter sweep (`python3 eval/jitter_sweep.py`)
 
@@ -255,7 +270,7 @@ CORRELATED INCIDENTS
 | a | **Read-only ingest** | `python3 -m prahari.cli selftest` parses the AST of every module in the detection path and fails if any imports `socket`, `requests`, `urllib`, `httpx`, `scapy` or similar. The dashboard server is deliberately *outside* that path. |
 | b | **No session-payload decryption** | No *session* key material is ever provisioned or derived; `Flow.pkt_sizes` holds sizes and directions, and no field anywhere holds session-payload bytes. The sole crypto operation is unwrapping a QUIC Initial with the **public** RFC 9001 salt (`quic_crypto.py`) — the same handshake ClientHello that is sent in the clear over TCP — to read its JA4/SNI. It reads a handshake, never a session: no 1-RTT key is computed, and the AEAD tag is not even verified. |
 | c | **Streaming, not batch** | `Engine.push()` processes one flow at a time and closes windows as the clock advances. `bench` reports measured p50/p95/p99. |
-| d | **Stated throughput** | 14,387 flows/sec sustained, hardware and method in `cli.py bench`. |
+| d | **Stated throughput** | ~10.8k flows/sec full-pipeline on one core, measured by `eval/report.py`; method and boundary stated with the number. |
 | e | **Standardised alert schema** | `schema.Alert.to_record()` — versioned JSON, ECS-aligned field naming, with timestamp, flow ID, threat class, calibrated confidence, evidence, model version and hash-chain position. |
 
 ---
@@ -312,7 +327,7 @@ A prototype that oversells itself loses the viva. These are the gaps.
    our captures is still generated, so the traffic shapes are ours; only the
    wire format and the parsing of it are real.
 
-2. **Six of seven classes score 1.000. That will not survive real traffic.**
+2. **Most classes score 1.000 on synthetic data. That will not survive real traffic.**
    Synthetic DGA names are random strings and so are cleanly separable;
    real *dictionary*-DGA families concatenate plausible words and would defeat
    the lexical features entirely. Treat these numbers as "the pipeline is
@@ -341,8 +356,9 @@ A prototype that oversells itself loses the viva. These are the gaps.
    positives, but a patient adversary moving modest volumes to a reputable
    external cloud endpoint still looks much like an employee using that service.
 
-5. **~87 alerts/hour is too noisy for production.** The deduplication window
-   needs tuning against real analyst feedback.
+5. **Alert volume (~3.6k per million flows) still needs tuning for a real SOC
+   queue.** The deduplication and correlation windows need tuning against real
+   analyst feedback, and severity/asset context would cut the queue further.
 
 ---
 
@@ -398,7 +414,7 @@ scripts/make_pcap.py  writes a genuine wire-format .pcap (round-trip test + demo
 scripts/demo.py       cross-platform `make demo`, for machines without make
 docs/DEMO.md       the runbook for presenting this
 docs/DEPLOY.md     live-sensor and static-viewer deployment
-tests/             40 tests (25 engine + 15 web)
+tests/             49 tests (33 engine + 16 web)
 ```
 
 ---

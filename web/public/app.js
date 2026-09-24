@@ -483,10 +483,13 @@ async function loadMetrics() {
       <td class="num mono">${r.recall.toFixed(3)}</td>
       <td class="num mono">${r.f1.toFixed(3)}</td>
       <td class="num mono muted">${r.tp}/${r.fp}/${r.fn}</td></tr>`).join("");
+  const fp = d.false_positives || {}, lat = d.latency_ms || {}, cal = d.calibration || {};
   statTiles($("#metrics-stats"), [
-    [d.macro_f1.toFixed(3), "macro F1"],
-    [String(d.alerts), "alerts / " + d.simulated_hours + "h"],
-    [d.alerts_per_hour + "/h", "alert volume"],
+    [Number(d.macro_f1).toFixed(3), "strict macro F1"],
+    [Number(d.host_detection_f1 || 0).toFixed(3), "host-detection F1"],
+    [String(fp.events ?? 0) + "/" + String(fp.benign_hosts ?? 0), "FP events / benign hosts"],
+    [(lat.p95 != null ? Math.round(lat.p95 / 1000) + "s" : "—"), "p95 window delay (60s)"],
+    [(cal.ece != null ? Number(cal.ece).toFixed(2) : "—"), "calibration ECE"],
   ]);
   $("#metrics-caveats").innerHTML = d.caveats.map((c) =>
     `<li><span class="muted">▸</span> ${esc(c)}</li>`).join("");

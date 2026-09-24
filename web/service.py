@@ -39,9 +39,9 @@ WINDOW = 60.0
 SCENARIOS: dict[str, dict[str, Any]] = {
     "full": {
         "title": "Full spectrum",
-        "blurb": "All seven traffic classes over 30 minutes: every threat family "
-                 "the problem statement names, plus the benign hosts that make "
-                 "them hard to find.",
+        "blurb": "All eight attack classes over 30 minutes: every threat family "
+                 "the problem statement names, OT/ICS across three protocols, "
+                 "plus the benign hosts that make them hard to find.",
         "classes": None,
         "duration": 1800,
         "seed": 1337,
@@ -440,51 +440,55 @@ def _read_json(name: str, default):
 
 
 def metrics() -> dict:
-    """Held-out evaluation and the jitter sweep, as measured by eval/."""
-    results = _read_json("results.json", {})
-    per_class = results.get("per_class", {})
-    rows = []
-    for cls, c in sorted(per_class.items()):
-        tp, fp, fn = c.get("tp", 0), c.get("fp", 0), c.get("fn", 0)
-        prec = tp / (tp + fp) if tp + fp else 0.0
-        rec = tp / (tp + fn) if tp + fn else 0.0
-        f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0
-        rows.append({"threat_class": cls, "tp": tp, "fp": fp, "fn": fn,
-                     "precision": round(prec, 3), "recall": round(rec, 3),
-                     "f1": round(f1, 3)})
-    macro = round(sum(r["f1"] for r in rows) / len(rows), 3) if rows else 0.0
+    """Held-out evaluation, calibration, latency and the jitter sweep — read from
+    the ONE canonical artifact eval/report.json (python3 eval/report.py). Every
+    number the dashboard shows is the number that command produced; nothing here
+    is computed a second way."""
+    rep = _read_json("report.json", {})
+    per_class = rep.get("per_class", {})
+    rows = [{"threat_class": cls, **c} for cls, c in sorted(per_class.items())]
 
     sweep = _read_json("jitter_sweep.json", None)
     if sweep is None:
         sweep = []
         csv = ROOT / "eval" / "jitter_sweep.csv"
         if csv.exists():
-            lines = csv.read_text(encoding="utf-8").splitlines()
-            for line in lines[1:]:
+            for line in csv.read_text(encoding="utf-8").splitlines()[1:]:
                 parts = line.split(",")
                 if len(parts) >= 4:
                     sweep.append({"jitter": float(parts[0]), "recall": float(parts[1]),
                                   "detected": int(parts[2]), "beacons": int(parts[3])})
 
-    hours = results.get("simulated_hours", 0) or 0
-    alerts = results.get("alerts", 0) or 0
+    ood = _read_json("unseen_family.json", {})
+    fp = rep.get("false_positives", {})
+    lat = rep.get("detection_window_delay_ms", {})
+    thr = rep.get("throughput", {})
     return {
         "per_class": rows,
-        "macro_f1": macro,
-        "alerts": alerts,
-        "simulated_hours": hours,
-        "alerts_per_hour": round(alerts / hours, 1) if hours else 0.0,
+        "macro_f1": rep.get("macro_f1_strict", 0.0),          # STRICT, no equivalence
+        "host_detection_f1": rep.get("host_detection", {}).get("f1", 0.0),
+        "dataset": rep.get("dataset", {}),
+        "false_positives": fp,
+        "calibration": rep.get("calibration", {}),
+        "latency_ms": lat,
+        "throughput": thr,
+        "alerts_per_million_flows": rep.get("alerts_per_million_flows", 0.0),
+        "tests": rep.get("tests", {}),
+        "anomaly_net": rep.get("anomaly_net", {}),
+        "unseen_family": ood,
+        "confusion": rep.get("confusion", {}),
+        "labels": rep.get("labels", []),
         "jitter_sweep": sweep,
         "caveats": [
-            "Traffic is generated, so these numbers say the pipeline is wired "
-            "correctly end to end — not that it scores this on your link.",
-            "Six classes at 1.000 will not survive real traffic. Dictionary DGAs "
-            "made of real words defeat our lexical features entirely.",
-            "~83 alerts/hour is still too noisy for a production SOC queue.",
-            "The nightly-backup hard negative is no longer a false positive: the "
-            "learned exfil model separates its internal bulk upload from real "
-            "exfiltration on destination locality. The trade is one missed exfil "
-            "window (recall 0.80) for a queue with no backup-host noise.",
+            "All traffic here is generated. These numbers prove the pipeline is "
+            "wired correctly and internally consistent — not that it scores this "
+            "on your production link. Real traffic is harder.",
+            "The headline is STRICT per-class macro-F1 (no class-equivalence "
+            "credit); host-detection F1 is reported separately, never instead.",
+            "One residual error remains (an encrypted-malware host scored as "
+            "data_exfiltration) — see the confusion matrix; we do not hide it.",
+            "Dictionary DGAs built from real words remain a known blind spot for "
+            "the lexical features; see the coverage/degradation matrix.",
         ],
     }
 

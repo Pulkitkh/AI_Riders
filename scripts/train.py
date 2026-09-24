@@ -218,16 +218,31 @@ def main() -> int:
     exf.save("exfil")
 
     # -- anomaly (unsupervised, benign-only) ----------------------------------
-    print("\nfitting Isolation Forest on benign traffic (zero-day net) ...")
+    print("\nfitting Isolation Forest + robust profile on benign traffic ...")
     Xben = [AnomalyDetector.features(f) for f in train_flows if f.label == "benign"]
     print(f"  benign feature vectors: {len(Xben)}")
     iso = IsolationForest(n_trees=120, sample_size=256).fit(Xben)
+
+    # robust per-feature benign profile for the outlier gate: the 0.1/99.9th
+    # percentile envelope of each CONTINUOUS feature. A flow outside this
+    # envelope on any continuous axis (e.g. a connection held far longer than
+    # anything benign) is a candidate the Isolation Forest handles poorly.
+    dim = len(Xben[0])
+    p_lo, p_hi = [], []
+    for j in range(dim):
+        col = sorted(v[j] for v in Xben)
+        p_lo.append(col[int(len(col) * 0.001)])
+        p_hi.append(col[min(int(len(col) * 0.999), len(col) - 1)])
+    (MODEL_DIR / "anomaly_profile.json").write_text(
+        json.dumps({"p_lo": p_lo, "p_hi": p_hi,
+                    "continuous": list(range(6))}), encoding="utf-8")
+    print(f"  wrote benign p0.1/p99.9 envelope ({dim} features)")
     # sanity: mean score on benign held-out vs. attack held-out
     ben_h = [iso.score(AnomalyDetector.features(f)) for f in held_flows if f.label == "benign"]
     atk_h = [iso.score(AnomalyDetector.features(f)) for f in held_flows if f.label != "benign"]
     mben = sum(ben_h) / len(ben_h) if ben_h else 0.0
     matk = sum(atk_h) / len(atk_h) if atk_h else 0.0
-    print(f"  mean anomaly score  benign {mben:.3f}  |  attack {matk:.3f}  (higher = more anomalous)")
+    print(f"  mean IF score  benign {mben:.3f}  |  attack {matk:.3f}  (higher = more anomalous)")
     iso.save("anomaly")
     metrics["anomaly"] = {"benign_mean": round(mben, 4), "attack_mean": round(matk, 4),
                           "benign_vectors": len(Xben)}

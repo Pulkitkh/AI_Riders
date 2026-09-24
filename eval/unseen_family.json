@@ -1,0 +1,16 @@
+{
+  "family": "novel_unseen (covert channel, port 4444, irregular)",
+  "seeds": [
+    5201,
+    5202,
+    5203,
+    5204,
+    5205
+  ],
+  "anomaly_recall": 1.0,
+  "caught": 5,
+  "runs": 5,
+  "supervised_fired_on_novel": 0,
+  "anomaly_benign_false_flags": 0,
+  "benign_hosts": 575
+}

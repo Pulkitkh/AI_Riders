@@ -31,12 +31,14 @@ PCAP = "data/demo.pcap"
 
 STEPS: list[tuple[str, list[str], bool]] = [
     # label, argv after the interpreter, slow?
-    ("tests", ["tests/test_prahari.py"], False),
+    ("engine tests", ["tests/test_prahari.py"], False),
+    ("web tests", ["tests/test_web.py"], False),
     ("build a real capture", ["scripts/make_pcap.py", "--out", PCAP,
                               "--duration", "1800"], True),
     ("analyse real packets", ["-m", "prahari.cli", "live", "--pcap", PCAP], False),
     ("read-only self-test", ["-m", "prahari.cli", "selftest"], False),
-    ("held-out evaluation", ["eval/evaluate.py"], True),
+    ("canonical evaluation", ["eval/report.py"], True),
+    ("unseen-family (OOD) experiment", ["eval/unseen_family.py"], True),
     ("jitter sweep", ["eval/jitter_sweep.py"], True),
 ]
 

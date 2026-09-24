@@ -12,12 +12,31 @@ analyst attention, not compute:
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .detectors.base import Detection
+from .model import apply_calibration
 from .schema import Alert, MITRE_ATTACK, SEVERITY_BY_CLASS
+
+CALIBRATION_FILE = Path(__file__).resolve().parent / "models" / "calibration.json"
+
+
+def load_calibration() -> dict:
+    """Per-class isotonic calibration tables fitted by scripts/calibrate.py.
+
+    Maps a raw detector score to the empirically observed precision at that
+    score, so a reported confidence of 0.9 means roughly nine-in-ten. Absent
+    file -> empty dict -> confidence falls back to the raw score, and the alert
+    schema documents exactly that.
+    """
+    try:
+        return json.loads(CALIBRATION_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 CORRELATION_WINDOW = 1800.0      # seconds
@@ -52,10 +71,12 @@ class Incident:
 
 
 class Fusion:
-    def __init__(self, suppress: set[str] | None = None):
+    def __init__(self, suppress: set[str] | None = None,
+                 calibration: dict | None = None):
         self.seen: dict[str, float] = {}            # dedupe key -> last emitted
         self.incidents: dict[str, Incident] = {}
         self.suppress = suppress or set()           # explicit, auditable allowlist
+        self.calibration = calibration if calibration is not None else load_calibration()
 
     @staticmethod
     def _key(d: Detection) -> str:
@@ -91,11 +112,15 @@ class Fusion:
                 continue
             self.seen[key] = now
 
-            confidence = round(min(max(d.score, 0.0), 1.0), 3)
+            raw = round(min(max(d.score, 0.0), 1.0), 3)
+            cal = self.calibration.get(d.threat_class)
+            confidence = round(apply_calibration(cal, raw), 3) if cal else raw
             # Stamp the MITRE ATT&CK technique so every alert lands in a
             # kill-chain an analyst can pivot on, not just a class bucket.
             tech = MITRE_ATTACK.get(d.threat_class)
             evidence = dict(d.evidence)
+            if cal:
+                evidence["raw_score"] = raw
             if tech:
                 evidence["mitre_technique"] = tech[0]
                 evidence["mitre_name"] = tech[1]
@@ -107,6 +132,7 @@ class Fusion:
                 threat_class=d.threat_class,
                 severity=self.severity_for(d, confidence),
                 confidence=confidence,
+                score=raw,
                 src_ip=d.src_ip,
                 dst_ip=d.dst_ip,
                 detector=detector_name,

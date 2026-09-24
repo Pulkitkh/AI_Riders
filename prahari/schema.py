@@ -135,7 +135,8 @@ class Alert:
     ts_emitted: float        # when we raised the alert
     threat_class: str
     severity: str
-    confidence: float        # calibrated, not a raw model score
+    confidence: float        # calibrated probability (isotonic) where a calibration
+                             # model exists for the class; otherwise the raw score
     src_ip: str
     dst_ip: str | None
     detector: str
@@ -145,6 +146,7 @@ class Alert:
     observed_flows: int = 1
     reverse_direction_visible: bool = True
     caveat: str | None = None
+    score: float = 0.0       # raw detector output, before calibration (kept for audit)
 
     @property
     def latency_ms(self) -> float:
@@ -160,7 +162,8 @@ class Alert:
             "threat": {
                 "class": self.threat_class,
                 "severity": self.severity,
-                "confidence": round(self.confidence, 3),
+                "confidence": round(self.confidence, 3),   # calibrated
+                "score": round(self.score, 3),             # raw detector output
             },
             "flow": {
                 "ids": self.flow_ids[:8],

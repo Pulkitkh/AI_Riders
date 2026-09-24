@@ -231,6 +231,38 @@ class TrafficGenerator:
                 illegal: bool = False, label: str = "benign") -> Flow:
         return self._ics_flow(t, src, dst, "modbus", func, write, illegal, label)
 
+    def _novel_covert(self, t0: float, src: str, dst: str, n: int = 16) -> list[Flow]:
+        """A deliberately UNSEEN attack family — for the zero-day / OOD experiment.
+
+        A covert channel on a non-standard TCP port (4444) with irregular timing
+        and a roughly balanced, medium byte volume. It is designed to trip NONE of
+        the trained/tuned detectors: it is not periodic (beacon is silent), not
+        DNS (DGA/tunnel silent), carries no TLS fingerprint (encrypted-malware
+        silent), is not a high-asymmetry bulk transfer (exfil silent), is not a
+        fan-out scan (recon silent) and is not an OT/ICS or flood pattern. The only
+        thing that can catch it is the unsupervised anomaly net — which never saw
+        this family in any form. That is the whole point of the experiment.
+        """
+        rng = self.rng
+        out, t = [], t0
+        for _ in range(n):
+            nb = rng.randint(6, 14)
+            # Long-lived, low-rate, roughly balanced dribble on a non-standard
+            # port — the shape of a hands-on-keyboard RAT / covert channel. Benign
+            # flows here are short (sub-second to a few seconds); holding a
+            # connection open for minutes at a trickle is the genuine anomaly, and
+            # no trained/signature detector is built to look for it.
+            out.append(Flow(
+                ts=t, src_ip=src, dst_ip=dst, src_port=rng.randint(32768, 61000),
+                dst_port=4444, proto="tcp", duration=rng.uniform(120.0, 420.0),
+                pkts_out=nb, pkts_in=nb + rng.randint(-2, 2),
+                bytes_out=nb * rng.randint(90, 260), bytes_in=nb * rng.randint(80, 240),
+                syn=1, synack=1, fin=rng.choice([0, 1]),
+                pkt_sizes=[rng.choice([200, -180, 90, -240, 310]) for _ in range(nb)],
+                label="novel_unseen"))
+            t += rng.uniform(6, 55)                # irregular — defeats periodicity
+        return out
+
     def _ics_attack(self, t0: float, src: str, plc: str, proto: str = "modbus") -> list[Flow]:
         """An OT intrusion, in any of the three protocols: enumerate function
         codes, issue unauthorised WRITE/operate commands, and one illegal code —
@@ -345,6 +377,12 @@ class TrafficGenerator:
             flows += self._ics_attack(t0 + duration_s * 0.66, "10.42.9.7", "10.42.5.10", "modbus")
             flows += self._ics_attack(t0 + duration_s * 0.70, "10.42.9.8", "10.42.5.20", "iec104")
             flows += self._ics_attack(t0 + duration_s * 0.74, "10.42.9.9", "10.42.5.30", "dnp3")
+
+        # A genuinely UNSEEN attack family, enabled ONLY by the OOD experiment.
+        # It is never in ALL_ATTACKS, so no model and no eval ever trains or tunes
+        # on it. Only the unsupervised anomaly net has any chance of catching it.
+        if "novel_unseen" in on:
+            flows += self._novel_covert(t0 + duration_s * 0.35, "10.42.7.66", "203.0.113.200")
 
         flows.sort(key=lambda f: f.ts)
         return flows

@@ -114,15 +114,19 @@ Click **verify hash chain**.
 ### Window 4 — the numbers (60 seconds)
 
 ```bash
-python3 eval/evaluate.py
+python3 eval/report.py
 ```
 
-> "Five held-out captures the models never saw, split by capture and not at
-> random, because splitting flows at random leaks an attack burst across both
-> sides and inflates everything. Macro F1 0.952. Six classes at 1.000 — and I
-> want to be the one who tells you that number is too good, because our traffic
-> is generated. What it proves is that the pipeline is wired correctly end to
-> end, not that we will get 1.000 on your link."
+> "One command, one artifact — eval/report.json — and every number we show
+> comes from it. Eight held-out captures the models never saw, split by capture
+> and not at random, because splitting flows at random leaks an attack burst
+> across both sides and inflates everything. Scoring is strict per class, no
+> equivalence credit. STRICT macro-F1 0.993; host-detection F1 1.000 reported
+> separately. Zero false positives on 840 benign hosts — the one residual error
+> is a classification slip (a malware host scored as exfiltration), and it is
+> right there in the confusion matrix. I want to be the one who tells you these
+> numbers are on generated traffic: they prove the pipeline is correct and
+> internally consistent, not that we get this on your link."
 
 Then point at the hard negative we defeated with learning:
 
@@ -131,10 +135,11 @@ Then point at the hard negative we defeated with learning:
 > signature of data theft. No threshold on volume or ratio can tell them apart.
 > So we made exfil a fitted model, and the feature that separates them is
 > destination locality: the backup uploads to an internal file server, real
-> exfiltration leaves the network. Exfil precision went from 0.50 to 1.00 and
-> the backup host no longer alerts. We traded one missed exfil window for it —
-> recall 0.80 — and we say so. ~83 alerts an hour is still too noisy for a real
-> SOC, and we say that too."
+> exfiltration leaves the network. The backup host no longer alerts at all —
+> zero false positives on 840 benign hosts. Exfil recall is 1.000 with one
+> classification slip elsewhere (precision 0.889), and we show it in the
+> confusion matrix rather than smoothing it away. Alert volume is ~3.6k per
+> million flows — still to be tuned for a real SOC queue, and we say that too."
 
 ---
 
@@ -212,12 +217,16 @@ and packet-shape features carry more weight in our scoring than fingerprint
 lookups do — they survive.
 
 **"How fast is it?"**
-`python3 -m prahari.cli bench`. Around 15,000 flows/sec sustained on one core (it varies with the machine; run it
-in front of them rather than quoting ours).
-Detection latency p50 is about 32 seconds — and it *cannot* be lower than that,
+`python3 -m prahari.cli bench` (or `eval/report.py`). Around 10–11k flows/sec
+full-pipeline on one core — parse → detect → fuse → calibrate → ledger — at
+~0.09 ms/flow compute (it varies with the machine; run it in front of them
+rather than quoting ours).
+Detection-window delay p50 is about 38 seconds at the 60 s batch window — and it *cannot* be lower than that,
 because a detector that aggregates over a 60-second window cannot alert before
-the window closes. Anyone claiming sub-second detection of a 60-second beacon
-interval is describing something incoherent.
+the window closes. The window is a deployment knob, not a constant — the live
+sensor defaults to a 5-second window, so detection delay there is a few seconds.
+Anyone claiming sub-second detection of a 60-second beacon interval is
+describing something incoherent.
 
 ---
 
