@@ -18,13 +18,13 @@
     "tn": 12660
   },
   "beacon_train": {
-    "precision": 1.0,
+    "precision": 0.973,
     "recall": 1.0,
-    "f1": 1.0,
+    "f1": 0.9863,
     "tp": 36,
-    "fp": 0,
+    "fp": 1,
     "fn": 0,
-    "tn": 3316
+    "tn": 3387
   },
   "beacon_held_out": {
     "precision": 1.0,
@@ -33,29 +33,29 @@
     "tp": 9,
     "fp": 0,
     "fn": 0,
-    "tn": 839
+    "tn": 843
   },
   "exfil_train": {
-    "precision": 1.0,
+    "precision": 0.9767,
     "recall": 1.0,
-    "f1": 1.0,
+    "f1": 0.9882,
     "tp": 42,
-    "fp": 0,
+    "fp": 1,
     "fn": 0,
-    "tn": 114
+    "tn": 113
   },
   "exfil_held_out": {
     "precision": 1.0,
-    "recall": 1.0,
-    "f1": 1.0,
-    "tp": 10,
+    "recall": 0.9,
+    "f1": 0.9474,
+    "tp": 9,
     "fp": 0,
-    "fn": 0,
+    "fn": 1,
     "tn": 28
   },
   "anomaly": {
-    "benign_mean": 0.4951,
-    "attack_mean": 0.6156,
-    "benign_vectors": 97908
+    "benign_mean": 0.4919,
+    "attack_mean": 0.5922,
+    "benign_vectors": 102228
   }
 }

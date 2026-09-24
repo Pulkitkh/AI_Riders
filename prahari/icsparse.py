@@ -73,7 +73,7 @@ def recognise_dnp3(payload: bytes):
     ctrl = payload[3]
     func = ctrl & 0x0F                       # link-layer function
     try:
-        dst, src = struct.unpack("!HH", payload[4:8])
+        dst, src = struct.unpack("<HH", payload[4:8])   # DNP3 addresses are little-endian
     except struct.error:
         return None
     return {"proto": "dnp3", "func": func, "unit": dst, "src_addr": src,

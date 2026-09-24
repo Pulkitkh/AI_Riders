@@ -211,22 +211,41 @@ class TrafficGenerator:
                     ics_proto="modbus", ics_func=func, ics_unit=rng.randint(1, 3),
                     ics_write=write, ics_illegal=illegal, label=label)
 
-    def _ics_attack(self, t0: float, src: str, plc: str) -> list[Flow]:
-        """An OT intrusion: first enumerate function codes, then issue
-        unauthorised WRITE commands and one illegal code — the classic ICS
-        kill-chain from a host that never legitimately polled the PLC."""
+    # port and read/write function codes per OT protocol
+    _ICS = {"modbus": (502, (1, 2, 3, 4, 7, 17), (5, 6, 16), 99),
+            "iec104": (2404, (0x01, 0x03, 0x05, 0x07, 0x09), (0x2D, 0x2E, 0x2F), 0xFF),  # C_SC/C_DC/C_RC
+            "dnp3": (20000, (0x01, 0x00, 0x09), (0x03, 0x04, 0x05), 0x0F)}                # func 3/4 = write/operate
+
+    def _ics_flow(self, t: float, src: str, dst: str, proto: str, func: int,
+                  write: bool = False, illegal: bool = False, label: str = "benign") -> Flow:
         rng = self.rng
+        port = self._ICS[proto][0]
+        return Flow(ts=t, src_ip=src, dst_ip=dst, src_port=rng.randint(32768, 61000),
+                    dst_port=port, duration=rng.uniform(0.01, 0.2),
+                    pkts_out=2, pkts_in=2, bytes_out=rng.randint(60, 90),
+                    bytes_in=rng.randint(70, 130), syn=1, synack=1, fin=1,
+                    ics_proto=proto, ics_func=func, ics_unit=rng.randint(1, 3),
+                    ics_write=write, ics_illegal=illegal, label=label)
+
+    def _modbus(self, t: float, src: str, dst: str, func: int, write: bool = False,
+                illegal: bool = False, label: str = "benign") -> Flow:
+        return self._ics_flow(t, src, dst, "modbus", func, write, illegal, label)
+
+    def _ics_attack(self, t0: float, src: str, plc: str, proto: str = "modbus") -> list[Flow]:
+        """An OT intrusion, in any of the three protocols: enumerate function
+        codes, issue unauthorised WRITE/operate commands, and one illegal code —
+        the classic ICS kill-chain from a host that never legitimately polled the
+        controller. Same shape for Modbus, IEC 60870-5-104 and DNP3."""
+        reads, writes, illegal = self._ICS[proto][1], self._ICS[proto][2], self._ICS[proto][3]
         flows = []
-        # function-code enumeration (reconnaissance of the controller)
-        for i, fc in enumerate((1, 2, 3, 4, 7, 17)):
-            flows.append(self._modbus(t0 + i * 0.6, src, plc, fc, label="ics_intrusion"))
-        # an illegal function code (fuzzing / exploitation probe)
-        flows.append(self._modbus(t0 + 4.0, src, plc, 99, illegal=True, label="ics_intrusion"))
-        # unauthorised state-changing writes (open a breaker / change a setpoint)
+        for i, fc in enumerate(reads):
+            flows.append(self._ics_flow(t0 + i * 0.6, src, plc, proto, fc, label="ics_intrusion"))
+        flows.append(self._ics_flow(t0 + 4.0, src, plc, proto, illegal, illegal=True,
+                                    label="ics_intrusion"))
         for i in range(6):
-            fc = rng.choice((5, 6, 16))
-            flows.append(self._modbus(t0 + 5.0 + i * 0.8, src, plc, fc, write=True,
-                                      label="ics_intrusion"))
+            fc = self.rng.choice(writes)
+            flows.append(self._ics_flow(t0 + 5.0 + i * 0.8, src, plc, proto, fc, write=True,
+                                        label="ics_intrusion"))
         return flows
 
     # -- the capture ----------------------------------------------------------
@@ -265,14 +284,18 @@ class TrafficGenerator:
         for i in range(6):
             flows.append(self._backup(t0 + duration_s * 0.55 + i * 9, INTERNAL[6]))
 
-        # benign OT: an HMI polls each PLC with read commands, forever. This is
-        # the baseline that makes an attacker's writes "unauthorised".
-        HMI, PLCS = "10.42.0.50", ["10.42.5.10", "10.42.5.11", "10.42.5.12"]
-        for plc in PLCS:
+        # benign OT: each controller is polled with reads by its established
+        # master, forever — Modbus PLCs, an IEC-104 RTU, a DNP3 outstation. This
+        # baseline is what makes an attacker's write "unauthorised".
+        OT = [("10.42.0.50", "10.42.5.10", "modbus", (3, 4)),
+              ("10.42.0.50", "10.42.5.11", "modbus", (3, 4)),
+              ("10.42.0.51", "10.42.5.20", "iec104", (0x01, 0x03)),   # SCADA master -> RTU
+              ("10.42.0.52", "10.42.5.30", "dnp3", (0x01, 0x00))]      # DNP3 master -> outstation
+        for master, ctrl, proto, reads in OT:
             k = 0
             while t0 + k * 5.0 < t0 + duration_s:
-                flows.append(self._modbus(t0 + k * 5.0 + rng.uniform(0, 0.3), HMI, plc,
-                                          rng.choice((3, 4))))
+                flows.append(self._ics_flow(t0 + k * 5.0 + rng.uniform(0, 0.3), master, ctrl,
+                                            proto, rng.choice(reads)))
                 k += 1
 
         # --- attacks ----------------------------------------------------------
@@ -317,7 +340,11 @@ class TrafficGenerator:
                 flows.append(self._exfil(t0 + duration_s * 0.72 + i * 30, src, "198.51.100.77"))
 
         if "ics_intrusion" in on:
-            flows += self._ics_attack(t0 + duration_s * 0.66, "10.42.9.7", "10.42.5.10")
+            # attacks across all three OT protocols, so a demo can show a real
+            # Modbus, IEC-104 and DNP3 intrusion — not just one protocol.
+            flows += self._ics_attack(t0 + duration_s * 0.66, "10.42.9.7", "10.42.5.10", "modbus")
+            flows += self._ics_attack(t0 + duration_s * 0.70, "10.42.9.8", "10.42.5.20", "iec104")
+            flows += self._ics_attack(t0 + duration_s * 0.74, "10.42.9.9", "10.42.5.30", "dnp3")
 
         flows.sort(key=lambda f: f.ts)
         return flows

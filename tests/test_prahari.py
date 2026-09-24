@@ -376,6 +376,21 @@ def test_modbus_parser_reads_function_code_not_payload():
     assert parse_ics(443, 55000, b"\x16\x03\x01") is None      # not ICS
 
 
+def test_iec104_and_dnp3_frames_parse():
+    """OT breadth: genuine IEC 60870-5-104 and DNP3 frames are recognised as
+    control traffic, from their real wire formats."""
+    from prahari.icsparse import recognise_iec104, recognise_dnp3, parse_ics
+    iec = bytes([0x68, 0x0e, 0x00, 0x00, 0x00, 0x00, 45, 0x01, 0x06, 0x00,
+                 0x01, 0x00, 0x64, 0x00, 0x00, 0x01])          # I-frame, C_SC_NA_1
+    r = recognise_iec104(iec)
+    assert r and r["proto"] == "iec104" and r["frame"] == "I" and r["is_write"]
+    dnp = bytes([0x05, 0x64, 0x14, 0xC4, 0x01, 0x00, 0x0A, 0x00, 0x00, 0x00])
+    d = recognise_dnp3(dnp)
+    assert d and d["proto"] == "dnp3" and d["func"] == 4       # operate/write
+    assert parse_ics(2404, 33000, iec)["proto"] == "iec104"
+    assert parse_ics(20000, 33000, dnp)["proto"] == "dnp3"
+
+
 def test_ics_detector_flags_unauthorised_write_not_the_hmi():
     """The OT detector must catch an attacker's write/scan while leaving the
     established HMI's routine polling alone."""

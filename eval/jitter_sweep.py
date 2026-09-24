@@ -20,7 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from prahari.engine import Engine
 from prahari.generate import TrafficGenerator
 
-JITTERS = [0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50]
+# Extended past the realistic C2 range (10-40%) to the honest breaking point:
+# a curve that is flat at 1.00 everywhere is not a measurement, it is a red flag.
+JITTERS = [0.0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00]
 SEEDS = [3101, 3102, 3103]          # seeds unused in training
 DURATION = 1800
 
