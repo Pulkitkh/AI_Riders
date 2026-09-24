@@ -448,6 +448,21 @@ def test_model_integrity_manifest_verifies():
     assert ok is not False, f"model integrity failed: {bad}"
 
 
+def test_flow_backed_alerts_carry_a_flow_id():
+    """PS schema requirement: any alert raised by flow traffic must carry at
+    least one non-empty flow id (the demo screenshot must never show '—')."""
+    from prahari.engine import Engine
+    from prahari.generate import TrafficGenerator, ALL_ATTACKS
+    flows = TrafficGenerator(seed=1337).capture(1800, classes=ALL_ATTACKS)
+    alerts = Engine(window=60.0).run(flows)
+    assert alerts, "expected some alerts"
+    # aggregate detectors (ddos/recon) use a synthetic src label; every other
+    # alert is tied to a concrete flow and must carry a flow id.
+    for a in alerts:
+        if a.src_ip and "sources" not in a.src_ip and "hosts" not in a.src_ip:
+            assert a.flow_ids and a.flow_ids[0], f"{a.threat_class} alert has no flow id"
+
+
 def test_ipv6_is_recognised_not_silently_dropped():
     """IPv6 frames must be identifiable so they are counted, not ignored."""
     from prahari.pcapread import link_l3_proto

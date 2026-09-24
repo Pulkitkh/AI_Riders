@@ -149,7 +149,7 @@ function openDrawer(a) {
     <p>${esc(info.plain)}</p>
     ${info.analogy ? `<p class="analogy">${esc(info.analogy)}</p>` : ""}
     ${info.why ? `<div class="row"><span class="lbl">Why it matters</span><span class="txt">${esc(info.why)}</span></div>` : ""}
-    ${info.action ? `<div class="row"><span class="lbl">What to do</span><span class="txt">${esc(info.action)}</span></div>` : ""}
+    ${info.action ? `<div class="row"><span class="lbl">Recommended action</span><span class="txt">${esc(info.action)}</span></div>` : ""}
   </div>` : "";
   const ev = Object.entries(a.evidence || {}).map(([k, v]) =>
     `<dt>${esc(k)}</dt><dd>${esc(Array.isArray(v) ? JSON.stringify(v) : v)}</dd>`).join("");
