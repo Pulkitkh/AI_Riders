@@ -441,6 +441,50 @@ def test_read_only_selftest_passes():
     assert ok, f"detection path imports a network client: {offenders}"
 
 
+def test_model_integrity_manifest_verifies():
+    """Every model artifact must match its recorded hash (tamper detection)."""
+    from prahari.selftest import check_model_integrity
+    ok, bad = check_model_integrity()
+    assert ok is not False, f"model integrity failed: {bad}"
+
+
+def test_ipv6_is_recognised_not_silently_dropped():
+    """IPv6 frames must be identifiable so they are counted, not ignored."""
+    from prahari.pcapread import link_l3_proto
+    # Ethernet + IPv6 ethertype 0x86DD
+    v6 = b"\xaa\xbb\xcc\xdd\xee\xff\x11\x22\x33\x44\x55\x66\x86\xdd" + b"\x60" + b"\x00" * 20
+    assert link_l3_proto(1, v6) == "ipv6"
+    v4 = b"\xaa\xbb\xcc\xdd\xee\xff\x11\x22\x33\x44\x55\x66\x08\x00" + b"\x45" + b"\x00" * 20
+    assert link_l3_proto(1, v4) == "ipv4"
+
+
+def test_parsers_never_crash_on_malformed_input():
+    """Custom protocol parsers are attack surface: fuzz them with random and
+    truncated bytes; each must return None/dict, never raise. A crafted frame
+    cannot be allowed to crash a passive sensor."""
+    import random
+    from prahari import icsparse, pcapread
+    parsers = [
+        icsparse.parse_modbus, icsparse.recognise_dnp3, icsparse.recognise_iec104,
+        pcapread.parse_dns, pcapread.parse_tls_client_hello,
+        pcapread.parse_tls_certificate, pcapread.parse_quic_initial,
+    ]
+    rng = random.Random(20260924)
+    for _ in range(3000):
+        blob = bytes(rng.randrange(256) for _ in range(rng.randrange(0, 64)))
+        for p in parsers:
+            try:
+                r = p(blob)
+            except Exception as e:                    # noqa: BLE001
+                raise AssertionError(f"{p.__name__} raised on fuzz input: {e!r}")
+            assert r is None or isinstance(r, dict)
+    # a few deliberately truncated OT frames
+    for pre in (b"\x68", b"\x68\x0e", b"\x05\x64", b"\x05\x64\x14", b"\x00\x00\x00\x00\x00\x00\x01"):
+        icsparse.recognise_iec104(pre)
+        icsparse.recognise_dnp3(pre)
+        icsparse.parse_modbus(pre)
+
+
 if __name__ == "__main__":
     fns = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

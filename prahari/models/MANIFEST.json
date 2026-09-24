@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-09-24T19:13:10Z",
+  "algorithm": "sha256",
+  "files": {
+    "anomaly.json": {
+      "sha256": "24683ee947249abf451e0464f6cbfcf7dd46f761f4fffe5b5444f539cbf0ca26",
+      "bytes": 713760
+    },
+    "anomaly_profile.json": {
+      "sha256": "29ee16cf9102bd1e0b0188a00b47f50c23b8edcaf7de9d9e2bdc4b13e74624df",
+      "bytes": 425
+    },
+    "beacon.json": {
+      "sha256": "f5f39cb1da9b2037b4eaeb049fc1412d3fcbfb4123941b2545d1f77eb797cd77",
+      "bytes": 1189
+    },
+    "bigrams.json": {
+      "sha256": "db2c1c057ffae076a90b6c53b62c430145700a513abcd8d68ccf1ee77bf9e7d0",
+      "bytes": 4880
+    },
+    "calibration.json": {
+      "sha256": "444e9c05ed8faeaaba287afed315aaf59fe03fa7dee8ba033bcd154de0924317",
+      "bytes": 252
+    },
+    "dga.json": {
+      "sha256": "c073bc36430ef8dbc0f3430b277d333e2323c9aaf00f450c94f90ee343e2ab04",
+      "bytes": 1021
+    },
+    "exfil.json": {
+      "sha256": "737e9b063a3d08102c29cb17c8fcbbce6ed25ba6c21f7cff2aa3dea01b3c1a7a",
+      "bytes": 1216
+    },
+    "training_report.json": {
+      "sha256": "8413b9b68bf7413f3d0123386bf8dfe27d999c4a37e0a7a6c9589c0d47b4f7ff",
+      "bytes": 935
+    }
+  }
+}

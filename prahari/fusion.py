@@ -71,12 +71,33 @@ class Incident:
 
 
 class Fusion:
+    # Bounds so a 24/7 sensor's memory tracks a rolling horizon, not the total
+    # number of unique entities ever seen.
+    STATE_TTL = 3600.0          # seconds a dedupe/incident entry lives without refresh
+    MAX_INCIDENTS = 20000       # hard cap on retained incidents (oldest evicted first)
+
     def __init__(self, suppress: set[str] | None = None,
                  calibration: dict | None = None):
         self.seen: dict[str, float] = {}            # dedupe key -> last emitted
         self.incidents: dict[str, Incident] = {}
         self.suppress = suppress or set()           # explicit, auditable allowlist
         self.calibration = calibration if calibration is not None else load_calibration()
+
+    def _evict(self, now: float) -> None:
+        """Prune dedupe keys and incidents past the TTL, and cap incident count.
+        Without this a long-running appliance accumulates memory proportional to
+        every unique (class,src,dst) and every entity ever seen."""
+        cutoff = now - self.STATE_TTL
+        if len(self.seen) > 4096:
+            self.seen = {k: t for k, t in self.seen.items() if t >= cutoff}
+        if self.incidents:
+            stale = [e for e, inc in self.incidents.items() if inc.last_seen < cutoff]
+            for e in stale:
+                del self.incidents[e]
+            if len(self.incidents) > self.MAX_INCIDENTS:
+                for e, _ in sorted(self.incidents.items(),
+                                   key=lambda kv: kv[1].last_seen)[:len(self.incidents) - self.MAX_INCIDENTS]:
+                    del self.incidents[e]
 
     @staticmethod
     def _key(d: Detection) -> str:
@@ -102,6 +123,7 @@ class Fusion:
              model_version: str, now: float | None = None,
              dedupe_window: float = 300.0) -> list[Alert]:
         now = now if now is not None else time.time()
+        self._evict(now)
         out: list[Alert] = []
         for d in detections:
             if d.src_ip in self.suppress or (d.dst_ip or "") in self.suppress:

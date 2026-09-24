@@ -11,6 +11,8 @@ a conventional IDS with a claim about one on its slide.
 from __future__ import annotations
 
 import ast
+import hashlib
+import json
 import socket
 import sys
 from pathlib import Path
@@ -50,6 +52,32 @@ def check_no_network_imports() -> tuple[bool, list[str]]:
     return not offenders, offenders
 
 
+def check_model_integrity() -> tuple[bool | None, list[str]]:
+    """Verify every model artifact against prahari/models/MANIFEST.json.
+
+    A modified model can blind a detector without changing any code, so the
+    engine should not be trusted if a model file does not match its recorded
+    hash. Returns (None, []) when no manifest is present (nothing to verify).
+    """
+    manifest = PKG / "models" / "MANIFEST.json"
+    if not manifest.exists():
+        return None, []
+    try:
+        m = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False, ["manifest unreadable"]
+    bad = []
+    for name, info in m.get("files", {}).items():
+        p = PKG / "models" / name
+        if not p.exists():
+            bad.append(f"{name}: missing")
+            continue
+        got = hashlib.sha256(p.read_bytes()).hexdigest()
+        if got != info.get("sha256"):
+            bad.append(f"{name}: hash mismatch")
+    return (not bad), bad
+
+
 def check_no_open_sockets() -> tuple[bool, int]:
     """Count sockets this process holds. The detection path should hold none."""
     n = 0
@@ -75,6 +103,14 @@ def main() -> int:
     ok_sockets, n = check_no_open_sockets()
     print(f"[{'PASS' if ok_sockets else 'FAIL'}] process holds no sockets (found {n})")
 
+    ok_models, bad_models = check_model_integrity()
+    if ok_models is None:
+        print("[SKIP] model integrity — no MANIFEST.json (run scripts/sign_models.py)")
+    else:
+        print(f"[{'PASS' if ok_models else 'FAIL'}] model artifacts match integrity manifest")
+        for b in bad_models:
+            print(f"       {b}")
+
     from .ledger import AlertLedger
     led = AlertLedger(Path("data") / "alerts.jsonl")
     ok_chain, count, bad = led.verify()
@@ -89,7 +125,8 @@ def main() -> int:
               f"({count} records{'' if ok_chain else f', first bad: {bad}'})")
 
     print("=" * 52)
-    all_ok = ok_imports and ok_sockets and ok_chain is not False
+    all_ok = (ok_imports and ok_sockets and ok_chain is not False
+              and ok_models is not False)
     print("RESULT:", "read-only properties hold" if all_ok else "CHECK FAILED")
     return 0 if all_ok else 1
 

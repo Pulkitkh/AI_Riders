@@ -111,6 +111,33 @@ class TrafficGenerator:
                     bytes_out=n * rng.randint(900, 1400), bytes_in=n * rng.randint(40, 80),
                     syn=1, synack=1, fin=1, label="benign")
 
+    def _cloud_backup_external(self, t: float, src: str) -> Flow:
+        """A LEGITIMATE large transfer to an EXTERNAL reputable cloud endpoint —
+        the hard negative dst_external cannot separate. This is what makes exfil
+        genuinely hard on a real network, and it is labelled benign on purpose."""
+        rng = self.rng
+        n = rng.randint(600, 2000)
+        return Flow(ts=t, src_ip=src, dst_ip="52.216.20.44",     # external cloud
+                    src_port=rng.randint(32768, 61000), dst_port=443,
+                    duration=rng.uniform(20, 120), pkts_out=n, pkts_in=int(n * 0.04),
+                    bytes_out=n * rng.randint(1000, 1400), bytes_in=n * rng.randint(60, 160),
+                    syn=1, synack=1, fin=1,
+                    tls_ja4=JA4_COMMON[0], tls_sni="s3.amazonaws.com",
+                    tls_cert_days=365, label="benign")
+
+    def _slow_drip_exfil(self, t: float, src: str, dst: str) -> Flow:
+        """Low-and-slow exfiltration: modest volume per flow, external, patient.
+        A stress case for a volume-threshold detector — labelled as attack."""
+        rng = self.rng
+        n = rng.randint(60, 180)
+        return Flow(ts=t, src_ip=src, dst_ip=dst, src_port=rng.randint(32768, 61000),
+                    dst_port=443, duration=rng.uniform(2, 15),
+                    pkts_out=n, pkts_in=int(n * 0.05),
+                    bytes_out=n * rng.randint(900, 1300), bytes_in=n * rng.randint(60, 160),
+                    syn=1, synack=1, fin=1,
+                    tls_ja4=rng.choice(JA4_COMMON), tls_sni="cdn-node.example-edge.net",
+                    tls_cert_days=200, label="data_exfiltration")
+
     # -- attacks --------------------------------------------------------------
     def _syn_flood(self, t: float, dst: str, n: int) -> list[Flow]:
         rng = self.rng

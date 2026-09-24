@@ -161,6 +161,36 @@ def strip_link(linktype: int, pkt: bytes) -> bytes | None:
     return None
 
 
+def link_l3_proto(linktype: int, pkt: bytes) -> str | None:
+    """Identify the L3 protocol of a frame: 'ipv4', 'ipv6', or None.
+
+    We decode IPv4 TCP/UDP today; IPv6 is RECOGNISED here so it can be counted
+    and reported rather than silently dropped (full IPv6 flow decode is a
+    documented next step). This is the honest scope of "IP traffic" coverage.
+    """
+    et = None
+    if linktype == LINKTYPE_ETHERNET and len(pkt) >= 14:
+        et = struct.unpack("!H", pkt[12:14])[0]
+        off = 14
+        while et in (0x8100, 0x88A8) and len(pkt) >= off + 4:
+            et = struct.unpack("!H", pkt[off + 2:off + 4])[0]
+            off += 4
+    elif linktype in (LINKTYPE_LINUX_SLL, LINKTYPE_LINUX_SLL2) and len(pkt) >= 16:
+        idx = 14 if linktype == LINKTYPE_LINUX_SLL else 0
+        et = struct.unpack("!H", pkt[idx:idx + 2])[0]
+    elif linktype == LINKTYPE_NULL and len(pkt) >= 4:
+        fam = struct.unpack("<I", pkt[:4])[0]
+        return "ipv4" if fam == 2 else ("ipv6" if fam in (24, 28, 30) else None)
+    elif linktype == LINKTYPE_RAW and pkt:
+        v = pkt[0] >> 4
+        return "ipv4" if v == 4 else ("ipv6" if v == 6 else None)
+    if et == 0x0800:
+        return "ipv4"
+    if et == 0x86DD:
+        return "ipv6"
+    return None
+
+
 def parse_ipv4(ip: bytes):
     """Decode an IPv4 header.
 

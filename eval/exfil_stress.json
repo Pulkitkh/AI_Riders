@@ -1,0 +1,13 @@
+{
+  "seeds": [
+    6101,
+    6102,
+    6103,
+    6104,
+    6105
+  ],
+  "runs": 5,
+  "legit_cloud_false_positives": 5,
+  "internal_staging_false_positives": 0,
+  "slow_drip_recall": 1.0
+}
