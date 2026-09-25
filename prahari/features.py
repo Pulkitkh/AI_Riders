@@ -182,6 +182,39 @@ def is_rfc1918(ip: str) -> bool:
     return a == 10 or (a == 172 and 16 <= b <= 31) or (a == 192 and b == 168)
 
 
+# Recognised service / telemetry / update / CDN domains. Periodic, regular
+# traffic to these is overwhelmingly legitimate background activity (OS and
+# browser update checks, chat heartbeats, cloud sync). In a MULTI-host network
+# destination popularity already separates these from C2; on a SINGLE-host tap
+# (one laptop) that signal is degenerate — every destination is talked to by one
+# host — so a recognised service SNI is what keeps normal use from looking like a
+# beacon. This is a starter allowlist, not exhaustive; an operator extends it.
+BENIGN_SNI_SUFFIXES = (
+    "google.com", "googleapis.com", "gstatic.com", "gvt1.com", "gvt2.com",
+    "youtube.com", "ytimg.com", "ggpht.com", "doubleclick.net",
+    "microsoft.com", "windowsupdate.com", "windows.com", "office.com",
+    "office365.com", "live.com", "msftconnecttest.com", "msedge.net", "bing.com",
+    "apple.com", "icloud.com", "mzstatic.com", "cdn-apple.com",
+    "mozilla.com", "mozilla.net", "firefox.com",
+    "cloudflare.com", "cloudflare.net", "cloudflareinsights.com",
+    "akamai.net", "akamaiedge.net", "akamaized.net", "fastly.net",
+    "amazonaws.com", "cloudfront.net", "azureedge.net", "azure.com",
+    "github.com", "githubusercontent.com", "githubassets.com",
+    "slack.com", "slack-edge.com", "spotify.com", "scdn.co",
+    "whatsapp.net", "facebook.com", "fbcdn.net", "instagram.com",
+    "cloudflare-dns.com", "digicert.com", "letsencrypt.org", "sectigo.com",
+    "ntp.org", "pool.ntp.org", "ubuntu.com", "debian.org", "canonical.com",
+)
+
+
+def is_benign_service_sni(sni: str | None) -> bool:
+    """True if the SNI is under a recognised service/telemetry/CDN domain."""
+    if not sni:
+        return False
+    host = sni.lower().rstrip(".")
+    return any(host == s or host.endswith("." + s) for s in BENIGN_SNI_SUFFIXES)
+
+
 def jitter_band(cv: float, centre: float = 0.16, width: float = 0.13) -> float:
     """How closely an interval CV matches the signature of a *jittered* beacon.
 

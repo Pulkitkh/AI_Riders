@@ -448,6 +448,44 @@ def test_model_integrity_manifest_verifies():
     assert ok is not False, f"model integrity failed: {bad}"
 
 
+def test_single_host_telemetry_not_flagged_as_beacon():
+    """On a single-user tap, periodic traffic to a RECOGNISED service (an OS /
+    browser / chat heartbeat) must not be flagged as C2 beaconing — the other
+    real-world false positive. A multi-host network is unaffected."""
+    from prahari.detectors.beacon import BeaconDetector
+    from prahari.schema import Flow
+    d = BeaconDetector()
+    for i in range(25):
+        d.observe(Flow(ts=i * 60.0, src_ip="192.168.2.101", dst_ip="140.82.113.22",
+                       src_port=45000 + i, dst_port=443, duration=0.1, pkts_out=6,
+                       pkts_in=8, bytes_out=800, bytes_in=2500, syn=1, synack=1, fin=1,
+                       pkt_sizes=[200, -300, 150, -400], tls_ja4="t13d_browser",
+                       tls_sni="clients.google.com"))
+    assert d.evaluate(1600.0) == [], "periodic traffic to a recognised service must not be C2"
+
+
+def test_single_host_browsing_does_not_raise_tls_alerts():
+    """A single-user tap (one laptop) has exactly one internal host, so every
+    fingerprint and every external site is 'seen on one host'. Cross-host rarity
+    must NOT fire on normal, download-shaped TLS 1.3 browsing — the real-world
+    false positive a user hit."""
+    from prahari.detectors.tls import EncryptedMalwareDetector
+    from prahari.schema import Flow
+    d = EncryptedMalwareDetector()
+    laptop = "192.168.2.101"
+    browser_ja4 = "t13d1717h2_5b57614c22b0_3cbfd9057e0d"
+    for i, site in enumerate(["140.82.113.22", "142.250.72.14", "151.101.1.140",
+                              "104.16.132.229", "13.107.42.14"]):
+        for _ in range(3):
+            # download-shaped (server sends the page): mostly inbound bytes/packets
+            sizes = [-1400 if k % 5 else 200 for k in range(20)]
+            d.observe(Flow(ts=float(i), src_ip=laptop, dst_ip=site, src_port=45000 + i,
+                           dst_port=443, pkts_out=8, pkts_in=40, bytes_out=3000,
+                           bytes_in=90000, syn=1, synack=1, fin=1, pkt_sizes=sizes,
+                           tls_ja4=browser_ja4, tls_sni="www.example.com", tls_cert_days=None))
+    assert d.evaluate(120.0) == [], "normal single-host browsing must not raise TLS alerts"
+
+
 def test_large_pcap_is_streamed_not_loaded_whole(tmp_path=None):
     """A large classic pcap must be read one packet at a time (bounded memory),
     and the streamed output must match the in-memory reader exactly."""

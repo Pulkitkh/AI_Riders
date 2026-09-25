@@ -37,6 +37,33 @@ degrades when its evidence is unavailable.
   and degrade to fan-out / fingerprint-shape signals rather than scoring a
   missing feature as benign.
 
+## Deployment scale: single-host vs multi-host
+
+PRAHARI is designed for a **multi-host** CII enclave, where two of its strongest
+legitimate/malicious separators are *cross-host* signals:
+
+- **Destination popularity** — a service many internal hosts contact is
+  infrastructure; a destination only one host beacons to is C2-like.
+- **Fingerprint rarity** — a JA4 seen on one host among many is unusual.
+
+On a **single-host tap** (e.g. one laptop for testing) both signals are
+degenerate: every destination and every fingerprint is "seen by one host", so a
+naive rarity rule would flag *all* normal browsing and *every* periodic
+background service (OS/browser update, chat heartbeat) as a threat. The detectors
+detect this case (fewer than 4 internal hosts) and adapt:
+
+- the encrypted-session detector **switches off cross-host rarity** and scores
+  only on host-independent evidence (self-signed/short-lived certs, strongly
+  upload-shaped conversations) — normal download-shaped browsing stays silent;
+- the beaconing detector **suppresses periodic traffic to recognised services**
+  (a starter telemetry/update/CDN allowlist in `prahari.features`) since
+  popularity cannot clear them there.
+
+A real C2 to an unrecognised destination is still scored normally. Operators
+extend the allowlist and use the auditable Fusion suppression set for their own
+environment. This is why the reported synthetic metrics (a ~112-host network)
+and single-host live behaviour differ — by design, and stated here.
+
 ## Robustness
 
 - **Passive-capture imperfection** (loss, reordering, truncation): a fragmented

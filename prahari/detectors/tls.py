@@ -53,9 +53,20 @@ class EncryptedMalwareDetector(Detector):
     # confidence as the full-visibility path, or the score stops meaning anything.
     DEGRADED_CEILING = 0.85
 
+    # "Rarity" (a fingerprint/destination seen by only one host) is only a signal
+    # when there are ENOUGH hosts for one-of-many to be unusual. On a single-user
+    # tap (one laptop) every fingerprint and every external site is seen by
+    # exactly one host, so rarity carries no information and must not fire — that
+    # is what made normal browsing raise alerts. Below this many distinct internal
+    # hosts, rarity is switched off and the detector relies only on host-
+    # independent evidence (self-signed / short-lived certs, strongly upload-
+    # shaped conversations).
+    MIN_HOSTS_FOR_RARITY = 4
+
     def __init__(self) -> None:
         self.ja4_hosts: dict[str, set[str]] = defaultdict(set)   # environment-wide rarity
         self.dst_hosts: dict[str, set[str]] = defaultdict(set)   # who talks to this dst
+        self.src_hosts: set[str] = set()                         # internal hosts (rarity population)
         self.by_pair: dict[tuple[str, str], list[Flow]] = defaultdict(list)
 
     def observe(self, flow: Flow) -> None:
@@ -63,7 +74,13 @@ class EncryptedMalwareDetector(Detector):
             return
         self.ja4_hosts[flow.tls_ja4].add(flow.src_ip)
         self.dst_hosts[flow.dst_ip].add(flow.src_ip)
+        if is_rfc1918(flow.src_ip):
+            self.src_hosts.add(flow.src_ip)
         self.by_pair[(flow.src_ip, flow.dst_ip)].append(flow)
+
+    @property
+    def rarity_meaningful(self) -> bool:
+        return len(self.src_hosts) >= self.MIN_HOSTS_FOR_RARITY
 
     def _degraded_score(self, dst: str, ja4: str, prevalence: int,
                         no_sni: bool, shape: dict[str, float]) -> tuple[float, dict]:
@@ -76,21 +93,32 @@ class EncryptedMalwareDetector(Detector):
         """
         dst_prevalence = len(self.dst_hosts.get(dst, ()))
         score = 0.0
-        if prevalence <= 1:
-            score += 0.30
-        elif prevalence <= 3:
-            score += 0.15
-        if dst_prevalence <= 1:
-            score += 0.25
-        elif dst_prevalence <= 3:
-            score += 0.12
-        if not is_rfc1918(dst):
-            score += 0.10
+        rarity = self.rarity_meaningful
+        if rarity:
+            # host-relative rarity — only when there are enough hosts to compare
+            if prevalence <= 1:
+                score += 0.30
+            elif prevalence <= 3:
+                score += 0.15
+            if dst_prevalence <= 1:
+                score += 0.25
+            elif dst_prevalence <= 3:
+                score += 0.12
+            if not is_rfc1918(dst):
+                score += 0.10
+            if no_sni:
+                score += 0.10
+        # Host-INDEPENDENT signal, valid even on a single-user tap: a strongly
+        # upload-shaped encrypted session is not a page load. Normal browsing is
+        # download-shaped (out_share well below 0.5), so it scores ~0 here.
         if shape["out_share"] > 0.6:
+            score += 0.30 if not rarity else 0.15
+        if shape["out_share"] > 0.85:
             score += 0.15
-        if no_sni:
-            score += 0.10
-        return min(score, self.DEGRADED_CEILING), {"dst_host_prevalence": dst_prevalence}
+        return min(score, self.DEGRADED_CEILING), {
+            "dst_host_prevalence": dst_prevalence,
+            "rarity_applied": rarity,
+            "internal_hosts_seen": len(self.src_hosts)}
 
     @staticmethod
     def shape_features(flows: list[Flow]) -> dict[str, float]:
@@ -122,12 +150,12 @@ class EncryptedMalwareDetector(Detector):
             extra: dict = {}
             if cert_seen:
                 score = 0.0
-                if prevalence <= 1:
-                    score += 0.35                   # fingerprint seen on one host only
+                if self.rarity_meaningful and prevalence <= 1:
+                    score += 0.35                   # fingerprint on one host only — only if rarity means something
                 if self_signed:
-                    score += 0.25
+                    score += 0.25                   # host-independent, strong
                 if short_cert:
-                    score += 0.20
+                    score += 0.20                   # host-independent, strong
                 if no_sni:
                     score += 0.10
                 if shape["out_share"] > 0.6:        # upload-shaped, not page-load-shaped

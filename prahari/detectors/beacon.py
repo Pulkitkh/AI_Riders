@@ -14,8 +14,8 @@ from __future__ import annotations
 from collections import defaultdict
 
 from ..features import (autocorrelation_peak, coefficient_of_variation, intervals,
-                        is_rfc1918, jitter_band, mad, mean, median,
-                        regularity, stdev)
+                        is_benign_service_sni, is_rfc1918, jitter_band, mad, mean,
+                        median, regularity, stdev)
 from ..model import LogisticRegression
 from ..schema import Flow
 from .base import Detection, Detector
@@ -36,6 +36,12 @@ class BeaconDetector(Detector):
 
     MIN_EVENTS = 6          # need enough check-ins for the interval stats to mean anything
     HORIZON = 3600.0        # rolling memory, seconds
+    # Below this many internal hosts, destination popularity cannot separate C2
+    # from a monitoring agent (every destination is talked to by one host), so on
+    # a single-user tap we suppress beaconing to RECOGNISED services — otherwise
+    # every OS/browser/chat heartbeat looks like C2. Multi-host networks are
+    # unaffected: popularity does the work there, exactly as before.
+    MIN_HOSTS_FOR_RARITY = 4
 
     def __init__(self) -> None:
         self.history: dict[tuple[str, str], list[Flow]] = defaultdict(list)
@@ -44,6 +50,7 @@ class BeaconDetector(Detector):
             self.threshold = self.model.threshold
         # Prevalence: a pattern shared by many hosts is infrastructure, not C2.
         self.dst_popularity: dict[str, set[str]] = defaultdict(set)
+        self.src_hosts: set[str] = set()             # internal hosts (rarity population)
 
     def observe(self, flow: Flow) -> None:
         if flow.proto != "tcp" or not flow.syn or flow.ics_proto:
@@ -51,6 +58,8 @@ class BeaconDetector(Detector):
         key = (flow.src_ip, flow.dst_ip)
         self.history[key].append(flow)
         self.dst_popularity[flow.dst_ip].add(flow.src_ip)
+        if is_rfc1918(flow.src_ip):
+            self.src_hosts.add(flow.src_ip)
 
     @staticmethod
     def extract(flows: list[Flow], dst_prevalence: int = 1) -> dict[str, float]:
@@ -98,6 +107,12 @@ class BeaconDetector(Detector):
                 continue
 
             popularity = len(self.dst_popularity[dst])
+            # Single-user tap: popularity is degenerate, so a periodic flow to a
+            # recognised service (google/microsoft/apple/… update & telemetry) is
+            # background noise, not C2. Suppress it rather than spam the operator.
+            single_host = len(self.src_hosts) < self.MIN_HOSTS_FOR_RARITY
+            if single_host and is_benign_service_sni(flows[-1].tls_sni):
+                continue
             feats = self.extract(flows, popularity)
             score = self.model.predict_proba(feats) if self.model else self._heuristic(feats)
             if not self.model and popularity >= 3:
