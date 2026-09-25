@@ -114,8 +114,8 @@
     "alerts": 374
   },
   "throughput": {
-    "flows_per_sec_full_pipeline": 9919.0,
-    "processing_latency_ms_per_flow": 0.1008,
+    "flows_per_sec_full_pipeline": 8347.0,
+    "processing_latency_ms_per_flow": 0.1198,
     "boundary": "full pipeline: parse->detect->fuse->calibrate->ledger"
   },
   "detection_window_delay_ms": {
@@ -131,12 +131,15 @@
     "benign_hosts": 0
   },
   "tests": {
-    "test_prahari.py": 40,
+    "test_prahari.py": 41,
     "test_web.py": 17,
-    "total": 57
+    "total": 58
   },
   "confusion": {
-    "c2_beaconing": {},
+    "c2_beaconing": {
+      "c2_beaconing": 23,
+      "data_exfiltration": 1
+    },
     "data_exfiltration": {
       "data_exfiltration": 8
     },
@@ -146,10 +149,7 @@
     "dns_tunnelling": {
       "dns_tunnelling": 8
     },
-    "encrypted_malware": {
-      "c2_beaconing": 23,
-      "data_exfiltration": 1
-    },
+    "encrypted_malware": {},
     "ics_intrusion": {
       "ics_intrusion": 24
     },

@@ -25,7 +25,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 
-from ..features import is_rfc1918
+from ..features import is_benign_service_sni, is_rfc1918
 from ..model import LogisticRegression
 from ..schema import Flow
 from .base import Detection, Detector
@@ -46,11 +46,14 @@ class ExfilDetector(Detector):
 
     MIN_BYTES = 200_000         # ignore trivial transfers
     ALPHA = 0.25                # EWMA rate for the per-host baseline
+    MIN_HOSTS_FOR_RARITY = 4    # below this, suppress uploads to recognised services
 
     def __init__(self) -> None:
         self.by_src: dict[str, list[Flow]] = defaultdict(list)
         self.baseline_ratio: dict[str, float] = {}
         self.known_dsts: dict[str, set[str]] = defaultdict(set)
+        self.dst_sni: dict[str, str] = {}          # last SNI seen per destination
+        self.src_hosts: set[str] = set()           # internal hosts (rarity population)
         self.model = LogisticRegression.load("exfil")
         if self.model:
             self.threshold = self.model.threshold
@@ -61,6 +64,10 @@ class ExfilDetector(Detector):
     def observe(self, flow: Flow) -> None:
         if flow.proto == "tcp" and not flow.ics_proto:
             self.by_src[flow.src_ip].append(flow)
+            if flow.tls_sni:
+                self.dst_sni[flow.dst_ip] = flow.tls_sni
+            if is_rfc1918(flow.src_ip):
+                self.src_hosts.add(flow.src_ip)
 
     @staticmethod
     def features(up: float, down: float, ratio: float, base: float | None,
@@ -125,6 +132,15 @@ class ExfilDetector(Detector):
             external = not is_rfc1918(top_dst)
             for f in flows:
                 self.known_dsts[src].add(f.dst_ip)
+
+            # Single-user tap: a large upload to a RECOGNISED cloud service
+            # (Drive / iCloud / Dropbox / photo backup) is ordinary, and without a
+            # multi-host baseline we cannot tell it from exfil, so we suppress it
+            # rather than cry wolf. A multi-host CII network keeps flagging it —
+            # insider-to-cloud exfil is a real concern there for an analyst to review.
+            if (len(self.src_hosts) < self.MIN_HOSTS_FOR_RARITY
+                    and is_benign_service_sni(self.dst_sni.get(top_dst))):
+                continue
 
             feats = self.features(up, down, ratio, base, top_share, novel,
                                   external, len(flows))

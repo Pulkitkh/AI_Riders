@@ -22,10 +22,11 @@ from __future__ import annotations
 
 import json
 import math
-from collections import defaultdict
+from collections import defaultdict, deque
 from pathlib import Path
 
 from ..anomaly import IsolationForest
+from ..features import is_benign_service_sni
 from ..schema import Flow
 from .base import Detection, Detector
 
@@ -41,16 +42,31 @@ class AnomalyDetector(Detector):
 
     FLAG_SCORE = 0.62         # Isolation-Forest score: a flow this isolated is a look
     ENV_MARGIN = 0.25         # log-units a continuous feature must clear the benign envelope
+    LOCAL_MARGIN = 0.35       # …and it must ALSO be outside THIS network's own envelope
     MIN_ANOM = 8              # SUSTAINED anomalous flows required — a one-off benign
                               # backup window (byte-ratio inversion, ~6 flows) must not
                               # alarm; a persistent covert channel (many flows) does
     HORIZON = 1800.0          # rolling memory, seconds
     RECENT = 120.0            # only alert while anomalous activity is fresh (bounds latency)
+    WARMUP = 150              # flows to learn the local baseline before alerting at all
+    LOCAL_MAX = 3000          # rolling sample of benign-looking local flows
+    CONT = (0, 1, 2, 3, 4, 5) # continuous feature indices (log bytes/ratio/duration/pkts)
 
     def __init__(self) -> None:
         self.by_src: dict[str, list[tuple[float, Flow, float]]] = defaultdict(list)
         self.model = IsolationForest.load("anomaly")
         self.profile = self._load_profile()
+        # LOCAL baseline: the trained profile above is fitted on SYNTHETIC benign
+        # traffic, so on a real link everything looks a little unusual and the
+        # detector would flag normal browsing. The honest fix is that "anomalous"
+        # must mean "unlike what THIS network actually does" — so we also learn a
+        # local per-feature envelope from the live traffic and require a flow to be
+        # an outlier against BOTH. A flow only trains the local baseline if it did
+        # not itself look anomalous, so a sustained attack cannot become normal.
+        self.local: deque[list[float]] = deque(maxlen=self.LOCAL_MAX)
+        self._local_lo: list[float] | None = None
+        self._local_hi: list[float] | None = None
+        self._since_refresh = 0
 
     @staticmethod
     def _load_profile() -> dict:
@@ -93,20 +109,63 @@ class AnomalyDetector(Detector):
                 worst = excess
         return worst
 
+    def _refresh_local(self) -> None:
+        """Recompute the local 1/99th-percentile envelope from recent flows."""
+        n = len(self.local)
+        if n < self.WARMUP:
+            self._local_lo = self._local_hi = None
+            return
+        self._local_lo, self._local_hi = [], []
+        for i in self.CONT:
+            col = sorted(v[i] for v in self.local)
+            self._local_lo.append(col[int(n * 0.01)])
+            self._local_hi.append(col[min(int(n * 0.99), n - 1)])
+        self._since_refresh = 0
+
+    def _local_excess(self, vec: list[float]) -> float:
+        if self._local_lo is None:
+            return 0.0
+        worst = 0.0
+        for j, i in enumerate(self.CONT):
+            excess = max(vec[i] - self._local_hi[j], self._local_lo[j] - vec[i], 0.0)
+            if excess > worst:
+                worst = excess
+        return worst
+
     def observe(self, flow: Flow) -> None:
         if self.model is None:
             return
+        # Recognised services (OS/browser/chat/CDN) are never "anomalous" — this
+        # is the same allowlist the other detectors use for a single-user tap.
+        if is_benign_service_sni(flow.tls_sni):
+            self.local.append(self.features(flow))
+            return
         vec = self.features(flow)
         s = self.model.score(vec)
-        excess = self._envelope_excess(vec)
-        # Ensemble: an Isolation-Forest score, OR a flow beyond the benign
-        # envelope on a continuous axis by a clear margin, mapped onto the same
-        # [0,1] scale so both unsupervised signals feed one number.
+        trained_excess = self._envelope_excess(vec)     # unusual vs SYNTHETIC benign
+        local_excess = self._local_excess(vec)          # unusual vs THIS network
+
+        # A flow is a candidate if the trained forest/profile finds it unusual…
         s_eff = s
-        if excess >= self.ENV_MARGIN:
-            s_eff = max(s, min(0.62 + (excess - self.ENV_MARGIN) * 0.20, 0.95))
-        if s_eff >= self.FLAG_SCORE:
+        if trained_excess >= self.ENV_MARGIN:
+            s_eff = max(s, min(0.62 + (trained_excess - self.ENV_MARGIN) * 0.20, 0.95))
+        candidate = s_eff >= self.FLAG_SCORE
+
+        # …but it is only ANOMALOUS if it is ALSO an outlier for this environment.
+        # Before the local baseline has warmed up we do not alert at all — a fresh
+        # sensor learns normal first, exactly as an analyst would expect.
+        warmed = self._local_lo is not None
+        anomalous = candidate and warmed and local_excess >= self.LOCAL_MARGIN
+
+        if anomalous:
             self.by_src[flow.src_ip].append((flow.ts, flow, s_eff))
+        else:
+            # learn the local baseline only from flows that look normal, so a
+            # sustained attack cannot quietly redefine "normal".
+            self.local.append(vec)
+            self._since_refresh += 1
+            if self._since_refresh >= 128 or self._local_lo is None:
+                self._refresh_local()
 
     def evaluate(self, window_end: float) -> list[Detection]:
         out: list[Detection] = []

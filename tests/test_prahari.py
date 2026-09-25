@@ -448,6 +448,36 @@ def test_model_integrity_manifest_verifies():
     assert ok is not False, f"model integrity failed: {bad}"
 
 
+def test_single_host_real_traffic_quiet_anomaly_and_exfil():
+    """On a single-user tap, a stream of varied real-world flows (page loads,
+    API calls, media, and uploads to recognised cloud services) must not raise
+    anomaly or exfil alerts once the local baseline has warmed up."""
+    from prahari.engine import Engine
+    from prahari.schema import Flow
+    import random
+    rng = random.Random(7)
+    svc = ["drive.google.com", "icloud.com", "dropbox.com", "i.ytimg.com", "fbcdn.net"]
+    flows = []
+    for i in range(600):
+        k = rng.random()
+        if k < 0.5:
+            bo, bi, po, pi, dur, sni = rng.randint(2000, 8000), rng.randint(50000, 400000), 10, 120, 1.0, "s%d.example.com" % (i % 50)
+        elif k < 0.85:
+            bo, bi, po, pi, dur, sni = rng.randint(300, 1500), rng.randint(500, 5000), 4, 6, 0.2, "a%d.example.com" % (i % 30)
+        else:
+            bo, bi, po, pi, dur, sni = rng.randint(200000, 2000000), rng.randint(5000, 30000), 800, 60, 20.0, rng.choice(svc)
+        flows.append(Flow(ts=i * 2.5, src_ip="192.168.2.101",
+                          dst_ip="104.%d.%d.%d" % (rng.randint(1, 255), rng.randint(1, 255), rng.randint(1, 255)),
+                          src_port=40000 + (i % 20000), dst_port=443, duration=dur, pkts_out=po,
+                          pkts_in=pi, bytes_out=bo, bytes_in=bi, syn=1, synack=1, fin=1,
+                          pkt_sizes=[1400, -200, 900, -150], tls_ja4="t13d_browser", tls_sni=sni))
+    flows.sort(key=lambda f: f.ts)
+    alerts = Engine(window=5.0).run(flows)
+    kinds = {a.threat_class for a in alerts}
+    assert not ({"anomalous_traffic", "data_exfiltration"} & kinds), \
+        f"single-host real traffic must be quiet, got {[a.threat_class for a in alerts]}"
+
+
 def test_single_host_telemetry_not_flagged_as_beacon():
     """On a single-user tap, periodic traffic to a RECOGNISED service (an OS /
     browser / chat heartbeat) must not be flagged as C2 beaconing — the other

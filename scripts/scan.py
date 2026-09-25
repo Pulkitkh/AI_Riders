@@ -1,16 +1,26 @@
 """A tiny TCP port scanner — for testing PRAHARI against a real external attack.
 
-Run this from a DIFFERENT machine (your laptop) against the server PRAHARI is
-watching. It opens a real TCP connection to each port in a range: the SYNs land
-on the server's interface, the sensor tapping that interface assembles them into
-flows, and the recon detector fires on the fan-out. This is the honest end-to-end
-test — a real scan, from a real remote host, detected live.
+The sensor only sees traffic on the interface it TAPS. So the scan must cross
+that interface, or the sensor never sees it and no alert fires. Two correct ways:
 
-    python3 scripts/scan.py <server-ip> [start-port] [end-port]
-    python3 scripts/scan.py 203.0.113.10 1 1000
+  1. Single machine (easiest): tell the sensor to tap loopback and scan loopback.
+         sudo python3 -m web.server --live --iface lo
+         python3 scripts/scan.py 127.0.0.1 1 1000
+     (Scanning 127.0.0.1 while the sensor taps your LAN NIC will NOT be seen —
+     loopback traffic never touches the LAN card. That is the usual surprise.)
 
-Only scan a host you are authorised to test — here, your own server. Needs no
-root and no dependencies; it is an ordinary connect scan.
+  2. Two machines (most realistic): run the sensor on the server's LAN NIC and
+     run this scanner from a DIFFERENT machine against the server's LAN IP.
+         # on the server:  sudo python3 -m web.server --live --iface eth0
+         # on your laptop:  python3 scripts/scan.py <server-LAN-ip> 1 1000
+
+The recon detector fires on the fan-out (many ports, few answered) a few seconds
+after the scan, once the flows expire and the window closes.
+
+    python3 scripts/scan.py <target-ip> [start-port] [end-port]
+
+Only scan a host you are authorised to test. Needs no root and no dependencies;
+it is an ordinary connect scan.
 """
 from __future__ import annotations
 
@@ -52,8 +62,14 @@ def main(argv=None) -> int:
     dt = time.time() - t0
     print(f"done in {dt:.1f}s — {len(list(ports))} ports probed")
     print(f"open: {open_ports or 'none'}")
-    print("\nIf PRAHARI is watching this host's interface, a 'Recon scanning'")
-    print("alert should now be on its Live tab, naming this machine as the source.")
+    loopback = host in ("127.0.0.1", "localhost", "::1")
+    print("\nA 'Recon scanning' alert should appear on the Live tab within a few")
+    print("seconds — IF the sensor is tapping the interface this scan crossed.")
+    if loopback:
+        print("You scanned LOOPBACK (127.0.0.1). The sensor must be tapping 'lo' to")
+        print("see it:  sudo python3 -m web.server --live --iface lo")
+        print("If it is tapping your LAN NIC (eth0/wlan0) it will NOT see this scan —")
+        print("scan the machine's LAN IP from another host instead.")
     return 0
 
 

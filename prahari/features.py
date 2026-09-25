@@ -201,9 +201,19 @@ BENIGN_SNI_SUFFIXES = (
     "amazonaws.com", "cloudfront.net", "azureedge.net", "azure.com",
     "github.com", "githubusercontent.com", "githubassets.com",
     "slack.com", "slack-edge.com", "spotify.com", "scdn.co",
-    "whatsapp.net", "facebook.com", "fbcdn.net", "instagram.com",
+    "whatsapp.net", "facebook.com", "fbcdn.net", "instagram.com", "cdninstagram.com",
     "cloudflare-dns.com", "digicert.com", "letsencrypt.org", "sectigo.com",
     "ntp.org", "pool.ntp.org", "ubuntu.com", "debian.org", "canonical.com",
+    # common cloud storage / collaboration / media (legitimate large transfers)
+    "dropbox.com", "dropboxusercontent.com", "box.com", "mega.nz", "wetransfer.com",
+    "drive.google.com", "storage.googleapis.com", "sharepoint.com", "onedrive.com",
+    "discord.com", "discordapp.com", "discordapp.net", "discord.gg",
+    "zoom.us", "zoom.com", "teams.microsoft.com", "telegram.org", "t.me",
+    "reddit.com", "redditstatic.com", "redd.it", "twitter.com", "twimg.com", "x.com",
+    "linkedin.com", "licdn.com", "netflix.com", "nflxvideo.net", "nflxso.net",
+    "twitch.tv", "ttvnw.net", "jtvnw.net", "tiktok.com", "tiktokcdn.com", "ibytedtos.com",
+    "pinterest.com", "pinimg.com", "snapchat.com", "sc-cdn.net",
+    "adobe.com", "adobe.io", "steamcontent.com", "steampowered.com", "epicgames.com",
 )
 
 
