@@ -48,6 +48,24 @@ def host_truth(flows) -> dict[str, set[str]]:
     return truth
 
 
+def alert_correct(threat_class: str, host: str, truth: dict[str, set[str]]) -> int:
+    """One honest definition of 'was this alert right', shared by the calibration
+    fitter and the ECE/Brier measurement so they can never disagree.
+
+    For a real threat class this is STRICT exact-label match — predicting
+    `c2_beaconing` on a pure exfiltration host is wrong and is scored wrong.
+    `anomalous_traffic` is the one exception: it is a CORROBORATING signal, not a
+    classifier, so its name is deliberately never in the truth set. Scoring it by
+    exact match would brand every anomaly alert 'incorrect' by construction and
+    silently poison calibration. Its correct job is to fire on a host that is in
+    fact attacking, so we score it as right when the host carries any true attack.
+    """
+    tset = truth.get(host, set())
+    if threat_class == "anomalous_traffic":
+        return 1 if tset else 0
+    return 1 if threat_class in tset else 0
+
+
 def host_pred(alerts):
     """Returns (per-host predicted class SET excluding the anomaly corroborator,
     per-host FULL set incl. anomaly, per-host PRIMARY prediction).

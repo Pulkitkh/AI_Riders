@@ -28,10 +28,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eval"))
 from prahari.engine import Engine
 from prahari.generate import ALL_ATTACKS, TrafficGenerator
 from prahari.model import isotonic_like_calibration
-from common import DDOS_TARGET, host_truth   # noqa: E402  (eval/common.py)
+from common import DDOS_TARGET, alert_correct, host_truth   # noqa: E402  (eval/common.py)
 
 # Distinct from training {11,23,37,41} and from eval/report.py {2001..,3007..}.
-CALIB = [(4101, 0.12), (4102, 0.26), (4103, 0.34), (4104, 0.19), (4105, 0.08)]
+# Enough held-out captures that even the single-host-per-capture classes
+# (exfil / dga / dns / recon / ddos) clear the n>=12 bar and get a fitted map
+# instead of falling back to an under-confident raw score.
+CALIB = [(4101, 0.12), (4102, 0.26), (4103, 0.34), (4104, 0.19), (4105, 0.08),
+         (4106, 0.15), (4107, 0.29), (4108, 0.37), (4109, 0.21), (4110, 0.11),
+         (4111, 0.17), (4112, 0.31), (4113, 0.24), (4114, 0.06), (4115, 0.33)]
 
 
 def main() -> int:
@@ -48,22 +53,23 @@ def main() -> int:
         truth = host_truth(flows)
         for a in alerts:
             host = DDOS_TARGET if a.threat_class == "volumetric_ddos" else a.src_ip
-            correct = 1 if a.threat_class in truth.get(host, set()) else 0
             scores[a.threat_class].append(a.score)
-            labels[a.threat_class].append(correct)
+            labels[a.threat_class].append(alert_correct(a.threat_class, host, truth))
 
     cal = {}
     for cls in sorted(scores):
         s, y = scores[cls], labels[cls]
-        # Need both correct and incorrect examples and enough of them; otherwise a
-        # single-point map would just assert 1.0, which is the opposite of honest.
-        if len(s) >= 12 and 0 < sum(y) < len(y):
+        # Fit whenever there is enough data. Laplace smoothing inside the fitter
+        # means an all-correct class is mapped to (n+1)/(n+2) — high, honest,
+        # never a bare 1.0 — so there is no longer any reason to skip a precise
+        # detector and leave its confidence as an under-confident raw score.
+        if len(s) >= 12:
             cal[cls] = isotonic_like_calibration(s, y, bins=6)
             emp = sum(y) / len(y)
             print(f"  {cls:<20} n={len(s):>4}  empirical precision {emp:.3f}  "
                   f"({len(cal[cls]['edges'])} bins)")
         else:
-            print(f"  {cls:<20} n={len(s):>4}  skipped (too few / all-correct — "
+            print(f"  {cls:<20} n={len(s):>4}  skipped (too few — "
                   f"confidence falls back to raw score)")
 
     out = Path(__file__).resolve().parents[1] / "prahari" / "models" / "calibration.json"

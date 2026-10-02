@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT / "eval"))
 from prahari.engine import Engine
 from prahari.generate import ALL_ATTACKS, TrafficGenerator
 from prahari.schema import SEVERITY_BY_CLASS
-from common import host_pred, host_truth   # noqa: E402  (eval/common.py)
+from common import alert_correct, host_pred, host_truth   # noqa: E402  (eval/common.py)
 
 # Held-out: seeds and jitter never used in training {11,23,37,41} or calibration.
 HELD_OUT = [(2001, 0.15), (2002, 0.22), (2003, 0.30), (2004, 0.08), (2005, 0.40),
@@ -130,11 +130,12 @@ def main() -> int:
             t_primary = max(tset, key=lambda c: SEV_RANK.get(SEVERITY_BY_CLASS.get(c, "low"), 0))
             conf[t_primary][primary.get(host, "benign")] += 1
 
-        # calibration pairs from the raw alert records
+        # calibration pairs from the raw alert records — same honest correctness
+        # definition the calibration fitter used (anomaly net scored as a
+        # corroborator, every real class scored strictly by exact label).
         for a in alerts:
             host = "10.42.0.80" if a.threat_class == "volumetric_ddos" else a.src_ip
-            correct = 1 if a.threat_class in truth.get(host, set()) else 0
-            cal_pairs.append((a.confidence, correct))
+            cal_pairs.append((a.confidence, alert_correct(a.threat_class, host, truth)))
 
     rows, macro = {}, []
     for c in scored:

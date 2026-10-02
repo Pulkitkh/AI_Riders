@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-24T19:13:10Z",
+  "generated_at": "2026-10-02T11:17:14Z",
   "algorithm": "sha256",
   "files": {
     "anomaly.json": {
@@ -19,8 +19,8 @@
       "bytes": 4880
     },
     "calibration.json": {
-      "sha256": "444e9c05ed8faeaaba287afed315aaf59fe03fa7dee8ba033bcd154de0924317",
-      "bytes": 252
+      "sha256": "a358abd491288b5a6b7b5bfbba709f7a364c5077f8b5f94a2b2e50bacff32a6d",
+      "bytes": 2661
     },
     "dga.json": {
       "sha256": "c073bc36430ef8dbc0f3430b277d333e2323c9aaf00f450c94f90ee343e2ab04",

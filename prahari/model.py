@@ -147,9 +147,20 @@ def train_test_split_temporal(rows: list[tuple], frac: float = 0.7):
     return rows[:cut], rows[cut:]
 
 
-def isotonic_like_calibration(scores: list[float], labels: list[int], bins: int = 10):
+def isotonic_like_calibration(scores: list[float], labels: list[int], bins: int = 10,
+                              smoothing: float = 1.0):
     """Map raw model scores to observed empirical precision, so a reported
     confidence of 0.9 actually means roughly nine in ten.
+
+    Each score-ordered bin's precision is Laplace-smoothed:
+    ``(correct + smoothing) / (n + 2*smoothing)``. With the default add-one
+    prior a bin that is *all correct* maps to ``(n+1)/(n+2)`` — e.g. 0.95 for
+    n=19 — rather than a bare 1.0. This is deliberate and is what makes the
+    calibration honest in BOTH directions: a highly precise detector whose raw
+    scores sit at 0.75 gets lifted toward its true ~95% precision (curing
+    under-confidence) while never being allowed to assert a dishonest certainty
+    from a finite, all-correct sample. A perfectly separable bin and an empty
+    one are both impossible to over-claim from.
 
     Returns a lookup that the detectors apply before an alert is emitted.
     """
@@ -162,8 +173,10 @@ def isotonic_like_calibration(scores: list[float], labels: list[int], bins: int 
         chunk = pairs[i:i + size]
         if not chunk:
             continue
+        k = sum(c[1] for c in chunk)
+        n = len(chunk)
         edges.append(chunk[0][0])
-        values.append(sum(c[1] for c in chunk) / len(chunk))
+        values.append((k + smoothing) / (n + 2 * smoothing))
     # enforce monotonicity (pool adjacent violators, simplified)
     for i in range(1, len(values)):
         if values[i] < values[i - 1]:

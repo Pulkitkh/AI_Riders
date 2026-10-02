@@ -55,8 +55,10 @@ method on NSL-KDD; we report them honestly rather than hide them.)
   a lab, and keeps working as the network changes. Validated end-to-end on NSL-KDD.
 - **Explainable by design (Digital Trust).** Every alert says, in plain English,
   *what* happened, *why* it matters, and *what to do* — next to the exact evidence
-  and the MITRE ATT&CK technique. Confidence is **calibrated** (isotonic), so 0.9
-  really means ~90%. Non-experts can read it; analysts can trust it.
+  and the MITRE ATT&CK technique. Confidence is **calibrated** (isotonic, all nine
+  classes) and measured, not asserted: expected calibration error **0.07** on
+  held-out captures, so 0.9 really does mean ~90%. Non-experts can read it;
+  analysts can trust it.
 - **Breadth.** Nine detectors covering volumetric DDoS, C2 beaconing, DGA malware
   domains, DNS tunnelling, suspicious encrypted (TLS) sessions, reconnaissance,
   data exfiltration, **OT/ICS** (Modbus/DNP3/IEC-104), and the unsupervised
@@ -175,8 +177,12 @@ Every number comes from these commands — nothing is quoted by hand.
   packet-level signals it cannot. Together they cover more than either alone, but
   neither is a live production network at national scale — real traffic is harder,
   and we say so.
-- R2L attacks are near-indistinguishable from normal logins on metadata; our
-  recall there is low, as it is for most published methods.
+- R2L attacks are near-indistinguishable from normal logins on connection
+  metadata; the supervised model's recall there is **1.9%** (U2R 35.8%), as it is
+  near-floor for most published NSL-KDD methods. This is exactly why the
+  unsupervised anomaly net — not the supervised classifier — is our headline: it
+  needs no attack labels and still catches 66% of families it never saw, R2L
+  included. We report the weak per-category numbers rather than hide them.
 - Encrypted DNS (DoH/DoT) and TLS 1.3 remove some metadata; the coverage matrix
   (`docs/COVERAGE.md`) states exactly what degrades and how.
 
