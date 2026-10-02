@@ -609,6 +609,113 @@ def test_parsers_never_crash_on_malformed_input():
         icsparse.parse_modbus(pre)
 
 
+# --- deep autoencoder baseline ----------------------------------------------
+def test_autoencoder_learns_normal_and_scores_anomalies_higher():
+    """Trained on 'normal' vectors, the reconstruction error must be higher for
+    out-of-distribution vectors than for held-out normal ones."""
+    import random as _r
+    from prahari.autoencoder import Autoencoder
+    rng = _r.Random(0)
+    normal = [[rng.gauss(0, 1) for _ in range(8)] for _ in range(400)]
+    ae = Autoencoder(dim=8, hidden=6, bottleneck=3, seed=1).fit(normal, epochs=8, lr=0.05)
+    held = [[rng.gauss(0, 1) for _ in range(8)] for _ in range(100)]
+    anomalous = [[rng.gauss(6, 1) for _ in range(8)] for _ in range(100)]
+    mean_normal = sum(ae.reconstruction_error(v) for v in held) / len(held)
+    mean_anom = sum(ae.reconstruction_error(v) for v in anomalous) / len(anomalous)
+    assert mean_anom > mean_normal * 2, (mean_normal, mean_anom)
+    # threshold_at_fpr roughly honours the requested false-positive rate
+    thr = ae.threshold_at_fpr(held, 0.10)
+    fp = sum(1 for v in held if ae.reconstruction_error(v) >= thr) / len(held)
+    assert 0.0 <= fp <= 0.25
+
+
+def test_logistic_attribution_terms_sum_to_the_logit():
+    """explain() returns the exact linear decomposition — the per-feature
+    contributions plus the bias must reconstruct the model's logit."""
+    import math
+    from prahari.model import LogisticRegression, sigmoid
+    feats = ["a", "b", "c"]
+    X = [{"a": 1.0, "b": 2.0, "c": 0.0}, {"a": 0.0, "b": 0.0, "c": 1.0},
+         {"a": 2.0, "b": 1.0, "c": 1.0}, {"a": 0.5, "b": 0.0, "c": 2.0}]
+    y = [1, 0, 1, 0]
+    m = LogisticRegression(feats, epochs=200).fit(X, y)
+    x = {"a": 1.5, "b": 1.0, "c": 0.5}
+    terms = m.explain(x, top=3)
+    logit = math.log(m.predict_proba(x) / (1 - m.predict_proba(x)))
+    recon = m.b + sum(t["contribution"] for t in m.explain(x, top=99))
+    # contributions are rounded to 3 dp for display, so allow that quantisation
+    assert abs(recon - logit) < 0.01, (recon, logit)
+    assert terms and "feature" in terms[0] and "contribution" in terms[0]
+
+
+def test_logistic_detectors_attach_attribution_to_alerts():
+    flows = TrafficGenerator(seed=2001, jitter=0.1).capture(600, classes=ALL_ATTACKS)
+    alerts = Engine(window=60.0).run(flows)
+    classes = {a.threat_class for a in alerts if (a.evidence or {}).get("attribution")}
+    # the three model-backed detectors should carry attribution when they fire
+    assert {"c2_beaconing", "dga_resolution", "data_exfiltration"} & classes
+
+
+# --- UNSW-NB15 loader --------------------------------------------------------
+def test_unsw_loader_shapes_and_vector_dim():
+    import io
+    from prahari.datasets import unsw
+    header = ("id,dur,proto,service,state,spkts,dpkts,sbytes,dbytes,rate,sttl,dttl,"
+              "sload,dload,sloss,dloss,sinpkt,dinpkt,sjit,djit,swin,stcpb,dtcpb,dwin,"
+              "tcprtt,synack,ackdat,smean,dmean,trans_depth,response_body_len,"
+              "ct_srv_src,ct_state_ttl,ct_dst_ltm,ct_src_dport_ltm,ct_dst_sport_ltm,"
+              "ct_dst_src_ltm,is_ftp_login,ct_ftp_cmd,ct_flw_http_mthd,ct_src_ltm,"
+              "ct_srv_dst,is_sm_ips_ports,attack_cat,label")
+    normal = "1,0.1,tcp,-,FIN,2,2,200,200,10,254,252,100,100,0,0,0.01,0.01,0,0,255,1,1,1,0,0,0,100,100,0,0,1,1,1,1,1,1,0,0,0,1,1,0,Normal,0"
+    attack = "2,0.2,udp,dns,INT,8,0,9000,0,5000,254,0,9e7,0,0,0,0.01,0,0,0,0,0,0,0,0,0,0,500,0,0,0,3,2,2,2,2,3,0,0,0,2,3,0,Exploits,1"
+    with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as fh:
+        fh.write(header + "\n" + normal + "\n" + attack + "\n")
+        path = fh.name
+    recs = unsw.load(path)
+    assert len(recs) == 2
+    assert recs[0].label == 0 and recs[1].label == 1
+    assert unsw.category(recs[1].attack) == "Exploits"
+    assert len({len(r.to_vec()) for r in recs}) == 1
+    assert len(recs[0].to_vec()) == unsw.feature_dim()
+    assert "proto=tcp" in recs[0].to_dict()
+
+
+# --- adversarial-evasion generator switches ----------------------------------
+def test_evasion_switches_change_only_the_targeted_signal():
+    from prahari.generate import JA4_MALICIOUS
+    # fingerprint mimicry: the C2 beacon must drop the malicious JA4 + self-signed cert
+    base = TrafficGenerator(seed=3).capture(400, classes={"c2_beaconing"})
+    evad = TrafficGenerator(seed=3, evade_fingerprint=True).capture(400, classes={"c2_beaconing"})
+    base_c2 = [f for f in base if f.label == "c2_beaconing"]
+    evad_c2 = [f for f in evad if f.label == "c2_beaconing"]
+    assert base_c2 and evad_c2
+    assert all(f.tls_ja4 == JA4_MALICIOUS and f.tls_self_signed for f in base_c2)
+    assert all(f.tls_ja4 != JA4_MALICIOUS and not f.tls_self_signed for f in evad_c2)
+    # dictionary DGA: names become low-entropy word-like strings
+    from prahari.features import lexical_features
+    from prahari.detectors.dga import load_bigrams
+    bg = load_bigrams()
+    dnorm = TrafficGenerator(seed=5).capture(400, classes={"dga_resolution"})
+    ddict = TrafficGenerator(seed=5, evade_dga_dictionary=True).capture(400, classes={"dga_resolution"})
+    qn = [f.dns_qname for f in dnorm if f.label == "dga_resolution" and f.dns_qname][:20]
+    qd = [f.dns_qname for f in ddict if f.label == "dga_resolution" and f.dns_qname][:20]
+    assert qn and qd
+    ent_norm = sum(lexical_features(q, bg)["entropy"] for q in qn) / len(qn)
+    ent_dict = sum(lexical_features(q, bg)["entropy"] for q in qd) / len(qd)
+    assert ent_dict < ent_norm      # dictionary names are lower-entropy than random
+
+
+def test_benign_scale_shifts_volume_without_breaking_labels():
+    base = TrafficGenerator(seed=9)
+    big = TrafficGenerator(seed=9); big.benign_scale = 3.0
+    fb = [f for f in base.capture(400, classes=set()) if f.label == "benign" and f.dst_port == 443]
+    fg = [f for f in big.capture(400, classes=set()) if f.label == "benign" and f.dst_port == 443]
+    assert fb and fg
+    mean_b = sum(f.bytes_out for f in fb) / len(fb)
+    mean_g = sum(f.bytes_out for f in fg) / len(fg)
+    assert mean_g > mean_b * 2      # 3x scale clearly shifts the benign distribution
+
+
 if __name__ == "__main__":
     fns = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

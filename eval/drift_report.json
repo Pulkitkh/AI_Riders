@@ -1,0 +1,29 @@
+{
+  "note": "benign-only traffic; static (trained envelope only) vs adaptive (trained AND learned-local baseline) false positives under drift",
+  "rows": [
+    {
+      "benign_scale": 1.0,
+      "static_flow_fp_rate": 0.0011,
+      "adaptive_host_fp_rate": 0.0,
+      "adaptive_anomaly_alerts": 0.0
+    },
+    {
+      "benign_scale": 1.5,
+      "static_flow_fp_rate": 0.0011,
+      "adaptive_host_fp_rate": 0.0,
+      "adaptive_anomaly_alerts": 0.0
+    },
+    {
+      "benign_scale": 2.2,
+      "static_flow_fp_rate": 0.1795,
+      "adaptive_host_fp_rate": 0.0,
+      "adaptive_anomaly_alerts": 0.0
+    },
+    {
+      "benign_scale": 3.0,
+      "static_flow_fp_rate": 0.284,
+      "adaptive_host_fp_rate": 0.0,
+      "adaptive_anomaly_alerts": 0.0
+    }
+  ]
+}

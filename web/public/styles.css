@@ -333,6 +333,15 @@ ul.posture li .ico { margin-top: 1px; color: var(--good); width: 16px; height: 1
 @keyframes slidein { from { transform: translateX(24px); opacity: .6; } to { transform: none; opacity: 1; } }
 .drawer header { position: static; border-bottom: 1px solid var(--border); backdrop-filter: none; background: var(--surface); }
 .drawer .content { overflow-y: auto; padding: var(--s4); flex: 1 1 auto; }
+/* per-feature attribution ("why the model fired") contribution bars */
+.attr { display: flex; flex-direction: column; gap: 6px; }
+.attr-row { display: grid; grid-template-columns: minmax(90px, 30%) 1fr auto; align-items: center; gap: var(--s2); }
+.attr-name { font: 600 11px/1.4 var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+.attr-track { height: 10px; background: var(--surface-2, rgba(128,128,128,.12)); border-radius: 5px; overflow: hidden; }
+.attr-bar { display: block; height: 100%; border-radius: 5px; }
+.attr-bar.pos { background: var(--critical); }
+.attr-bar.neg { background: var(--good); }
+.attr-val { font: 700 11px/1 var(--mono); color: var(--ink-2); min-width: 42px; text-align: right; }
 .kv { display: grid; grid-template-columns: minmax(120px, 34%) 1fr; gap: var(--s2) var(--s3); font-size: 12.5px; }
 .kv dt { color: var(--ink-3); font: 700 10px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .kv dd { margin: 0; font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; color: var(--ink); }

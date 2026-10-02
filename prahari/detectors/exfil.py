@@ -167,6 +167,7 @@ class ExfilDetector(Detector):
                         "destination_external": external,
                         "destination_is_new_for_host": novel,
                         "scored_by": "model" if self.model else "heuristic",
+                        **({"attribution": self.model.explain(feats)} if self.model else {}),
                     },
                     caveat="lead for analyst review — exfiltration has the weakest passive signal",
                 ))

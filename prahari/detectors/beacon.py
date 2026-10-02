@@ -135,6 +135,7 @@ class BeaconDetector(Detector):
                         "dest_prevalence_hosts": popularity,
                         "destination_external": bool(feats["dst_external"]),
                         "ja4": flows[-1].tls_ja4,
+                        **({"attribution": self.model.explain(feats)} if self.model else {}),
                     },
                 ))
         return out

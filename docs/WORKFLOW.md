@@ -92,3 +92,13 @@ It reports strict per-class precision/recall/F1, a separate host-detection F1, a
 strict confusion matrix, false-positive events vs hosts vs rate, detection-window
 delay percentiles, and dataset composition — all on held-out captures whose seeds
 and jitter were never used in training.
+
+Four further commands validate the *trustworthy-AI* properties, each on data the
+models never saw:
+
+```
+python3 eval/nslkdd_eval.py    # real public NSL-KDD + a from-scratch deep-autoencoder race
+python3 eval/unsw_eval.py      # modern UNSW-NB15 (2015) benchmark (fetch first)
+python3 eval/drift.py          # concept-drift: adaptive baseline vs a static one
+python3 eval/evasion.py        # adversarial evasion: measured degradation per signal
+```

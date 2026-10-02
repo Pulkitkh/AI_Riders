@@ -36,6 +36,11 @@ JA4_MALICIOUS = "t13d191100_9dc949149365_97f8aa674fd9"
 COMMON_WORDS = ["cdn", "api", "mail", "static", "login", "cloud", "assets",
                 "portal", "update", "images", "secure", "download", "app"]
 TLDS = ["com", "net", "org", "in", "io"]
+# real English words for the dictionary-DGA evasion case (eval/evasion.py)
+_DICT_WORDS = ["river", "stone", "bright", "copper", "silent", "garden", "winter",
+               "orange", "maple", "harbor", "velvet", "cedar", "meadow", "falcon",
+               "amber", "quartz", "willow", "summit", "ember", "cobalt", "marble",
+               "hollow", "crimson", "lantern", "pepper", "thistle", "walnut"]
 
 
 def _rand_name(rng: random.Random, n: int) -> str:
@@ -52,10 +57,23 @@ def _pick_brand(rng: random.Random) -> str:
 
 
 class TrafficGenerator:
-    def __init__(self, seed: int = 1337, jitter: float = 0.20, n_beacons: int = 3):
+    def __init__(self, seed: int = 1337, jitter: float = 0.20, n_beacons: int = 3,
+                 evade_fingerprint: bool = False, evade_dga_dictionary: bool = False):
         self.rng = random.Random(seed)
         self.jitter = jitter          # C2 beacon jitter fraction, 0.0 .. 0.5
         self.n_beacons = n_beacons    # distinct C2 pairs per capture
+        # Adversarial-evasion switches (default off; used by eval/evasion.py).
+        # evade_fingerprint: the implant mimics a common browser JA4 and a normal
+        #   CA-signed cert, defeating fingerprint-rarity — so only timing/shape
+        #   features can still catch it.
+        # evade_dga_dictionary: the DGA concatenates real dictionary words, so the
+        #   lexical/entropy features look benign — only the NXDOMAIN walk remains.
+        self.evade_fingerprint = evade_fingerprint
+        self.evade_dga_dictionary = evade_dga_dictionary
+        # benign_scale shifts the NORMAL traffic's volume distribution away from
+        # the synthetic-trained profile — used by eval/drift.py to simulate a
+        # different/evolving network and show the adaptive local baseline holds.
+        self.benign_scale = 1.0
 
     # -- benign ---------------------------------------------------------------
     def _web(self, t: float) -> Flow:
@@ -66,12 +84,13 @@ class TrafficGenerator:
         sizes = []
         for i in range(min(20, n_out + n_in)):
             sizes.append(rng.randint(120, 600) if i % 3 == 0 else -rng.randint(400, 1460))
+        sc = self.benign_scale
         return Flow(ts=t, src_ip=src, dst_ip=rng.choice(WEB_DSTS),
                     src_port=rng.randint(32768, 61000), dst_port=443,
-                    duration=rng.uniform(0.3, 14.0),
-                    pkts_out=n_out, pkts_in=n_in,
-                    bytes_out=n_out * rng.randint(120, 400),
-                    bytes_in=n_in * rng.randint(700, 1400),
+                    duration=rng.uniform(0.3, 14.0) * sc,
+                    pkts_out=int(n_out * sc), pkts_in=int(n_in * sc),
+                    bytes_out=int(n_out * rng.randint(120, 400) * sc),
+                    bytes_in=int(n_in * rng.randint(700, 1400) * sc),
                     syn=1, synack=1, fin=1, pkt_sizes=sizes,
                     tls_ja4=rng.choice(JA4_COMMON),
                     tls_sni=_benign_domain(rng),
@@ -155,6 +174,7 @@ class TrafficGenerator:
         """C2 check-in: small, similar every time, on a jittered interval."""
         rng = self.rng
         base = rng.randint(180, 260)
+        ja4 = rng.choice(JA4_COMMON) if self.evade_fingerprint else JA4_MALICIOUS
         return Flow(ts=t, src_ip=src, dst_ip=dst, src_port=rng.randint(32768, 61000),
                     dst_port=443, duration=rng.uniform(0.05, 0.3),
                     pkts_out=5, pkts_in=4,
@@ -162,13 +182,20 @@ class TrafficGenerator:
                     bytes_in=base + rng.randint(-20, 20),
                     syn=1, synack=1, fin=1,
                     pkt_sizes=[200, -180, 210, -190, 205],
-                    tls_ja4=JA4_MALICIOUS, tls_sni=None,
-                    tls_self_signed=True, tls_cert_days=7,
+                    tls_ja4=ja4, tls_sni=None,
+                    tls_self_signed=not self.evade_fingerprint,
+                    tls_cert_days=365 if self.evade_fingerprint else 7,
                     label="c2_beaconing")
 
     def _dga(self, t: float, src: str, resolves: bool) -> Flow:
         rng = self.rng
-        name = f"{_rand_name(rng, rng.randint(12, 22))}.{rng.choice(['com','net','info','biz'])}"
+        if self.evade_dga_dictionary:
+            # dictionary DGA: concatenated real words read as low-entropy and
+            # word-like, defeating the lexical features — the hard case.
+            name = ("".join(rng.choice(_DICT_WORDS) for _ in range(rng.randint(2, 3)))
+                    + "." + rng.choice(['com', 'net', 'info', 'biz']))
+        else:
+            name = f"{_rand_name(rng, rng.randint(12, 22))}.{rng.choice(['com','net','info','biz'])}"
         return Flow(ts=t, src_ip=src, dst_ip=DNS_SERVER,
                     src_port=rng.randint(32768, 61000), dst_port=53, proto="udp",
                     duration=rng.uniform(0.002, 0.04), pkts_out=1, pkts_in=1,
@@ -198,8 +225,10 @@ class TrafficGenerator:
                     pkts_out=rng.randint(120, 400), pkts_in=rng.randint(20, 60),
                     bytes_out=rng.randint(180_000, 900_000), bytes_in=rng.randint(4_000, 20_000),
                     syn=1, synack=1, fin=1, pkt_sizes=sizes,
-                    tls_ja4=JA4_MALICIOUS, tls_sni=None,
-                    tls_self_signed=True, tls_cert_days=rng.choice([3, 7, 14]),
+                    tls_ja4=(rng.choice(JA4_COMMON) if self.evade_fingerprint else JA4_MALICIOUS),
+                    tls_sni=None,
+                    tls_self_signed=not self.evade_fingerprint,
+                    tls_cert_days=365 if self.evade_fingerprint else rng.choice([3, 7, 14]),
                     label="encrypted_malware")
 
     def _scan(self, t: float, src: str, n: int) -> list[Flow]:

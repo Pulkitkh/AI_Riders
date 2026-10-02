@@ -86,6 +86,26 @@ class LogisticRegression:
             return 0.0
         return sigmoid(self._z(x))
 
+    def explain(self, x: dict[str, float], top: int = 4) -> list[dict]:
+        """Exact per-feature attribution for this decision.
+
+        For a logistic model the logit is a plain sum of per-feature terms
+        ``w[f] * zscore(x[f])`` plus a bias, so these contributions ARE the
+        decomposition of the score — not a sampled SHAP approximation. We return
+        the strongest few, each with the signed contribution and the raw value,
+        so an analyst (or a judge) sees exactly *why* the model fired. Positive
+        pushes the decision toward 'malicious', negative toward 'benign'.
+        """
+        if not self.mu:
+            return []
+        terms = []
+        for f in self.feature_names:
+            z = (x.get(f, 0.0) - self.mu[f]) / self.sigma[f]
+            terms.append((self.w[f] * z, f, x.get(f, 0.0)))
+        terms.sort(key=lambda t: abs(t[0]), reverse=True)
+        return [{"feature": f, "contribution": round(c, 3), "value": round(v, 4)}
+                for c, f, v in terms[:top] if abs(c) > 1e-6]
+
     # -- persistence ----------------------------------------------------------
     def choose_threshold(self, X, y, betas=(1.0,)) -> float:
         """Pick the operating point on the TRAINING data, then leave it alone.

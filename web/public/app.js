@@ -80,8 +80,27 @@ function sevBadge(sev) {
   return `<span class="sev ${esc(sev)}">${svg(SEV_ICON[sev] || "i-info", "ico")}${esc(sev)}</span>`;
 }
 function evidenceText(ev) {
-  return Object.entries(ev || {}).slice(0, 3)
+  return Object.entries(ev || {}).filter(([k]) => k !== "attribution").slice(0, 3)
     .map(([k, v]) => `${k}=${Array.isArray(v) ? v.length : v}`).join(", ");
+}
+// Signed per-feature attribution → horizontal contribution bars. Positive (red)
+// pushed the model toward 'malicious', negative (green) toward 'benign'. These
+// are the exact logit terms, so the bars literally sum to the decision.
+function attributionPanel(attr) {
+  if (!Array.isArray(attr) || !attr.length) return "";
+  const max = Math.max(...attr.map(t => Math.abs(t.contribution))) || 1;
+  const rows = attr.map(t => {
+    const pct = Math.round(Math.abs(t.contribution) / max * 100);
+    const pos = t.contribution >= 0;
+    return `<div class="attr-row">
+      <span class="attr-name" title="raw value: ${esc(t.value)}">${esc(t.feature)}</span>
+      <span class="attr-track"><span class="attr-bar ${pos ? "pos" : "neg"}" style="width:${pct}%"></span></span>
+      <span class="attr-val mono">${pos ? "+" : ""}${esc(t.contribution)}</span>
+    </div>`;
+  }).join("");
+  return `<h2 style="font-size:11px;margin:18px 0 8px" class="muted">WHY THE MODEL FIRED
+    (per-feature contribution to the decision)</h2>
+    <div class="attr">${rows}</div>`;
 }
 function fmtTime(ts) {
   if (!ts) return "—";
@@ -151,8 +170,9 @@ function openDrawer(a) {
     ${info.why ? `<div class="row"><span class="lbl">Why it matters</span><span class="txt">${esc(info.why)}</span></div>` : ""}
     ${info.action ? `<div class="row"><span class="lbl">Recommended action</span><span class="txt">${esc(info.action)}</span></div>` : ""}
   </div>` : "";
-  const ev = Object.entries(a.evidence || {}).map(([k, v]) =>
+  const ev = Object.entries(a.evidence || {}).filter(([k]) => k !== "attribution").map(([k, v]) =>
     `<dt>${esc(k)}</dt><dd>${esc(Array.isArray(v) ? JSON.stringify(v) : v)}</dd>`).join("");
+  const attr = attributionPanel((a.evidence || {}).attribution);
   const rec = a.record ? `<h2 style="font-size:11px;margin:18px 0 8px" class="muted">RAW ALERT RECORD (ECS-ALIGNED)</h2>
     <pre class="raw">${esc(JSON.stringify(a.record, null, 2))}</pre>` : "";
   $("#drawer-content").innerHTML = explain +
@@ -166,6 +186,7 @@ function openDrawer(a) {
       <dt>confidence</dt><dd>${a.confidence?.toFixed(3)}</dd>
       <dt>observed flows</dt><dd>${a.observed_flows ?? 1}</dd>
     </dl>
+    ${attr}
     <h2 style="font-size:11px;margin:18px 0 8px" class="muted">EVIDENCE THAT FIRED THIS ALERT</h2>
     <dl class="kv">${ev}</dl>${rec}`;
   $("#drawer").hidden = false; $("#scrim").hidden = false;

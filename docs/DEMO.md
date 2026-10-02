@@ -193,13 +193,18 @@ Nothing on the sensor side can request an update, because there is no path back.
 That is a real operational constraint, not a limitation we forgot.
 
 **"Why not deep learning?"**
-Three reasons, in this order. One, an alert must carry evidence an analyst can
-act on in six hours — CERT-In's reporting window — and "the network said 0.93"
-is not evidence. Two, the entire system runs on one CPU with no dependencies,
-which is what actually gets installed in an air-gapped enclave. Three, we fitted
-logistic regression *ourselves*, in-repo, with capped class weights and
-threshold selection on the training set only; if we cannot justify every
-coefficient we should not be shipping it.
+We didn't guess — we built one and measured it. `eval/nslkdd_eval.py` trains a
+from-scratch autoencoder (pure Python, normal-only) and races it against our
+explainable Isolation Forest at an *equal* 10% false-positive rate on NSL-KDD:
+the autoencoder reaches ~0.89 recall, the explainable model ~0.80 — within ten
+points, while being auditable and ~1000× lighter (a JSON of trees, not a trained
+net). Given that, three reasons to ship the explainable one. One, an alert must
+carry evidence an analyst can act on in a few hours, and "the network said 0.93"
+is not evidence — ours shows the exact per-feature contribution. Two, the entire
+system runs on one CPU with no dependencies, which is what actually gets installed
+in an air-gapped enclave. Three, we fitted every model *ourselves*, in-repo; if we
+cannot justify every coefficient we should not be shipping it. The autoencoder is
+in the repo, so this is a demonstration, not a claim.
 
 **"What is your accuracy on CIC-IDS2017?"**
 We deliberately did not report one. Engelen et al. (WTMC 2021) reconstructed

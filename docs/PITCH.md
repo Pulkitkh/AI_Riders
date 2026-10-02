@@ -18,18 +18,25 @@ it detects **71% of attacks at a 3% false-positive rate** with no attack labels,
 
 **AI / technical merit.** Real machine learning built from first principles in pure
 Python — a logistic-regression classifier, an Isolation-Forest anomaly detector with
-an *adaptive local baseline* that learns each network's normal, and isotonic
-confidence calibration. No scikit-learn, no TensorFlow, no GPU: it runs on an
-air-gapped laptop and every line is auditable. Nine detectors span DDoS, C2
-beaconing, DGA, DNS tunnelling, encrypted-session (TLS/JA4), reconnaissance,
-exfiltration, OT/ICS and the anomaly net.
+an *adaptive local baseline* that learns each network's normal, a from-scratch
+**deep autoencoder** baseline, and isotonic confidence calibration. No scikit-learn,
+no TensorFlow, no GPU: it runs on an air-gapped laptop and every line is auditable.
+Crucially we *measured* the deep-vs-explainable trade-off: at an equal false-positive
+rate on NSL-KDD the explainable Isolation Forest comes within ~10 recall points of
+the autoencoder while being auditable and ~1000× lighter — so "why not deep learning"
+is answered with a number, not a shrug. Nine detectors span DDoS, C2 beaconing, DGA,
+DNS tunnelling, encrypted-session (TLS/JA4), reconnaissance, exfiltration, OT/ICS and
+the anomaly net.
 
 **Innovation.** (1) Anomaly detection that adapts to the live environment instead of
-a fixed training set — so it works on real traffic, not just a lab. (2) Explainability
-as a first-class feature: every alert carries a plain-English story, the exact
-evidence, a calibrated probability and a MITRE ATT&CK technique. (3) Breadth into
-OT/ICS most IDS projects ignore. (4) A read-only / passive design that can never
-become an attack path itself.
+a fixed training set — *measured*: under a 3× benign-volume drift a static model's
+false positives climb to 28% while ours holds at 0%. (2) Explainability as a
+first-class feature: every alert carries a plain-English story, the exact evidence,
+an *exact per-feature attribution* of the decision, a calibrated probability and a
+MITRE ATT&CK technique. (3) A published **adversarial-evasion** evaluation (timing,
+fingerprint mimicry, dictionary-DGA) that shows no single evaded signal collapses
+the system. (4) Breadth into OT/ICS most IDS projects ignore. (5) A read-only /
+passive design that can never become an attack path itself.
 
 **Digital Trust.** The "trust" half of the theme is built in: calibrated confidence
 (a stated 0.9 really means ~90%), full explainability for every decision, a
@@ -43,7 +50,7 @@ watch it be caught. Also deploys as a shareable read-only link.
 
 **Rigour / credibility.** Every number comes from one reproducible command. Strict
 per-class scoring with a confusion matrix; two independent evaluations (real NSL-KDD +
-synthetic multi-protocol); 59 automated tests; limitations stated openly.
+synthetic multi-protocol); 65 automated tests; limitations stated openly.
 
 **Impact.** A lightweight, explainable, trustworthy IDS any organisation can run on
 commodity hardware — including the encrypted, OT, and resource-constrained settings
@@ -65,8 +72,11 @@ where heavyweight commercial tools struggle.
 ## Reproduce everything
 
 ```bash
-python3 scripts/fetch_nslkdd.py && python3 eval/nslkdd_eval.py   # real public data
+python3 scripts/fetch_nslkdd.py && python3 eval/nslkdd_eval.py   # real public data + deep-net comparison
+python3 eval/drift.py                                           # concept-drift resilience
+python3 eval/evasion.py                                         # adversarial-evasion robustness
 python3 eval/report.py                                          # synthetic multi-protocol
-python3 tests/test_prahari.py && python3 tests/test_web.py       # 59 tests
+python3 scripts/fetch_unsw.py && python3 eval/unsw_eval.py       # modern (2015) benchmark
+python3 tests/test_prahari.py && python3 tests/test_web.py       # 65 tests
 python3 -m web.server                                           # the live dashboard
 ```

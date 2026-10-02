@@ -86,6 +86,9 @@ class DGADetector(Detector):
                         "suspicious_name_rate": round(suspicious, 3),
                         "mean_name_score": round(mean(scores), 3),
                         "examples": [f.dns_qname for _, f in worst],
+                        **({"attribution": self.model.explain(
+                            lexical_features(worst[0][1].dns_qname, self.bigrams))}
+                           if self.model and worst else {}),
                     },
                 ))
         return out

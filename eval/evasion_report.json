@@ -1,0 +1,19 @@
+{
+  "note": "host-level recall, evaded vs baseline; honest degradation, not an evasion-proof claim",
+  "scenarios": {
+    "timing_jitter_0.6": {
+      "baseline": 1.0,
+      "evaded": 0.6666666666666666
+    },
+    "fingerprint_mimicry": {
+      "c2_baseline": 1.0,
+      "c2_evaded": 1.0,
+      "tls_baseline": 1.0,
+      "tls_evaded": 0.0
+    },
+    "dictionary_dga": {
+      "baseline": 1.0,
+      "evaded": 1.0
+    }
+  }
+}

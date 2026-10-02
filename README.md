@@ -17,8 +17,18 @@ attacks it has **never seen before**.
 It is validated on the standard public **NSL-KDD** benchmark *and* on a rich
 synthetic multi-protocol network, uses only pure-Python machine learning (**zero
 third-party dependencies**), and every alert is calibrated, mapped to MITRE
-ATT&CK, explained in plain English, and written to a tamper-evident audit trail —
-the *"digital trust"* half of the theme.
+ATT&CK, explained in plain English — with an exact **per-feature attribution** of
+*why* the model fired — and written to a tamper-evident audit trail: the
+*"digital trust"* half of the theme.
+
+The design thesis is **trustworthy AI**: we benchmark our explainable model
+head-to-head against a from-scratch **deep autoencoder** (also dependency-free) and
+come within ~10 recall points of it at an equal false-positive rate while staying
+auditable and ~1000× lighter; we show the detector **adapts to a network it was
+never trained on** (concept drift) instead of drowning it in false positives; and
+we publish an **adversarial-evasion** evaluation that measures exactly how each
+signal degrades when an attacker hides. A modern-benchmark harness (**UNSW-NB15**,
+2015) ships ready to run alongside NSL-KDD.
 
 ---
 
@@ -34,10 +44,15 @@ pure-Python models, trained on `KDDTrain+` and tested on `KDDTest+`:
 | **Unsupervised anomaly detection** (Isolation Forest, trained on *normal only*, no attack labels) | **71.1% of attacks detected at a 3.1% false-positive rate** |
 | **Novel-attack / zero-day detection** (the 17 attack families unseen in training) | **66.3% caught** — with zero labels for those families |
 | Supervised classifier (lightweight, explainable logistic model) | accuracy 0.76, **precision 0.91** on the official hard split; DoS recall 83%, Probe 78% |
+| **Deep-learning baseline** — a from-scratch autoencoder (pure Python, normal-only), at an **equal 10% false-positive rate** | autoencoder recall ~0.89 vs the explainable Isolation Forest **0.80** — the explainable model is within ~10 points while being auditable and ~1000× lighter |
 
 ```bash
 python3 scripts/fetch_nslkdd.py && python3 eval/nslkdd_eval.py   # reproduce in ~3 min
 ```
+
+That last row is the honest answer to *"why not deep learning?"* — we built the
+deep model, measured it on the same split at the same operating point, and chose
+the explainable one with the trade-off in hand. PRAHARI ships both.
 
 The anomaly detector — the part that matters for *"detecting anomalies"* — catches
 **two-thirds of attack families it was never trained on**. That is the whole point
@@ -74,6 +89,29 @@ method on NSL-KDD; we report them honestly rather than hide them.)
   on a single CPU core, no GPU.
 - **Honest evaluation.** One command produces every number; strict scoring with
   a confusion matrix; failure modes measured and disclosed, not hidden.
+
+---
+
+## Trustworthy AI, measured (not asserted)
+
+Four experiments, each one command, each a property a judge can check:
+
+| Property | What we measure | Result | Reproduce |
+|---|---|---|---|
+| **Competitive with deep learning** | our explainable Isolation Forest vs a from-scratch autoencoder on NSL-KDD, at an equal 10% FPR | IF recall **0.80** vs autoencoder **0.89** — within ~10 pts, auditable, ~1000× lighter | `python3 eval/nslkdd_eval.py` |
+| **Explainable per decision** | exact per-feature attribution (the logit decomposition) on every model-backed alert | top contributors shown in the UI and the alert record | in the dashboard drawer |
+| **Resilient to concept drift** | benign traffic shifted to 3× the training volume: static envelope vs adaptive local baseline | static FP **0.1%→28%**, adaptive holds at **0%** | `python3 eval/drift.py` |
+| **Robust to evasion** | timing jitter, JA4 mimicry, dictionary-DGA — how each signal degrades | each evasion degrades one signal; the system still detects the host | `python3 eval/evasion.py` |
+
+A modern-benchmark harness for **UNSW-NB15 (2015)** mirrors the NSL-KDD evaluation
+(supervised + unsupervised + autoencoder + per-family zero-shot recall):
+
+```bash
+python3 scripts/fetch_unsw.py && python3 eval/unsw_eval.py
+```
+
+(UNSW-NB15's CSVs are large and commonly LFS-hosted; the fetch script prints the
+exact public sources if your environment blocks the automatic download.)
 
 ---
 

@@ -55,5 +55,26 @@
     "rate": 0.6632,
     "caught": 2487,
     "total": 3750
+  },
+  "deep_autoencoder": {
+    "accuracy": 0.8956,
+    "precision": 0.9218,
+    "recall": 0.8924,
+    "f1": 0.9068,
+    "fpr": 0.1001,
+    "tp": 11452,
+    "fp": 972,
+    "tn": 8739,
+    "fn": 1381,
+    "novel_attack_recall": 0.8267,
+    "arch": "52-16-8-16-52 MLP, normal-only, pure-Python"
+  },
+  "matched_comparison": {
+    "target_fpr": 0.1,
+    "note": "both models thresholded to the SAME false-positive rate on the test benign set \u2014 a fair, equal operating-point (ROC) comparison",
+    "isolation_forest_recall": 0.7949,
+    "autoencoder_recall": 0.8924,
+    "isolation_forest_novel_recall": 0.7731,
+    "autoencoder_novel_recall": 0.8267
   }
 }

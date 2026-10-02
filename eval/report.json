@@ -114,8 +114,8 @@
     "alerts": 374
   },
   "throughput": {
-    "flows_per_sec_full_pipeline": 8607.0,
-    "processing_latency_ms_per_flow": 0.1162,
+    "flows_per_sec_full_pipeline": 7181.0,
+    "processing_latency_ms_per_flow": 0.1392,
     "boundary": "full pipeline: parse->detect->fuse->calibrate->ledger"
   },
   "detection_window_delay_ms": {
@@ -131,9 +131,9 @@
     "benign_hosts": 0
   },
   "tests": {
-    "test_prahari.py": 42,
+    "test_prahari.py": 48,
     "test_web.py": 17,
-    "total": 59
+    "total": 65
   },
   "confusion": {
     "c2_beaconing": {
