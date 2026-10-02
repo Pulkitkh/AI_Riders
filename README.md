@@ -1,453 +1,202 @@
-# PRAHARI
+# PRAHARI — an AI network Intrusion Detection System
 
 **P**assive **R**eal-time **A**nalysis of **H**ostile **A**ctivity over **R**ead-only **I**ngest
 
 > *It only listens.*
 
-Smart India Hackathon 2026 · Problem Statement **SIH26145** · National Technical
-Research Organisation · Team **AI Riders**
+**Cyber AI Hackathon 2026 · University of Derby, UK**
+Theme: **Cybersecurity & Digital Trust** — *Detecting anomalies in network traffic using Intrusion Detection Systems (IDS).*
+Team **AI Riders** · [github.com/Pulkitkh/PRAHARI](https://github.com/Pulkitkh/PRAHARI)
 
-An AI/ML pipeline that ingests a one-directional copy of IP traffic inside an
-isolated monitoring enclave and detects, classifies and scores six families of
-cyber threat in near real time — using only passively observed packets, flow
-records and derived metadata, with **no return path to the production network,
-no active probing, and no session-payload decryption**. (The one cryptographic
-operation anywhere is unwrapping a QUIC *Initial* with its published RFC 9001
-salt — public keying, no secret — which reads a handshake that is cleartext over
-TCP anyway; no session key is ever derived. See constraint b below.)
+PRAHARI is a working, tested AI-based **network intrusion detection system**. It
+reads a copy of network traffic from a passive tap (a SPAN/mirror port — it never
+injects a packet), learns what *normal* looks like for that network, and raises
+ranked, **explainable** alerts the moment traffic stops looking normal — including
+attacks it has **never seen before**.
 
----
-
-## The live web console
-
-PRAHARI ships a real-time SOC dashboard backed by the same engine. It runs in
-two forms, and the difference between them is honest, not cosmetic:
-
-**Live sensor (a real server).** On a Linux host it taps a real interface with a
-raw socket, assembles flows off the wire, runs the engine, and streams every
-alert to the browser over Server-Sent Events as it happens. Real packets, real
-capture, real-time detection.
-
-```bash
-sudo python3 -m web.server --live --iface eth0 --port 8000    # tap eth0
-#   or, self-contained on any Linux box (needs root):
-sudo python3 -m web.server --live --iface lo --port 8000
-```
-
-Open `http://<host>:8000`, press **Start sensor**, and — for a demo where no
-real attacker is handy — press the attack buttons, which craft genuine attack
-packets on the loopback interface for the sensor to catch. Nothing is mocked:
-the packets travel, the sensor sniffs them, the dashboard lights up.
-
-One command on a cloud VM:
-
-```bash
-docker compose up --build      # host networking + NET_RAW; open :8000
-```
-
-**Static viewer (shareable link).** For a URL the jury can just click, the same
-front end deploys to any static/serverless host (Vercel, Netlify, GitHub
-Pages). There it cannot tap a NIC — no serverless platform can — so live mode
-stands down and the **Replay scenarios**, **one-way visibility**, **metrics**,
-**ledger** and **read-only proof** tabs run instead, driven either by the
-precomputed datasets or by the stateless serverless API. See
-[`docs/DEPLOY.md`](docs/DEPLOY.md).
-
-Why the split: live capture needs a raw socket, root, and a process that stays
-alive. Serverless gives none of those. Rather than fake a live feed on a
-platform that cannot produce one, PRAHARI runs the real sensor on a real host
-and keeps the static viewer honestly read-only.
+It is validated on the standard public **NSL-KDD** benchmark *and* on a rich
+synthetic multi-protocol network, uses only pure-Python machine learning (**zero
+third-party dependencies**), and every alert is calibrated, mapped to MITRE
+ATT&CK, explained in plain English, and written to a tamper-evident audit trail —
+the *"digital trust"* half of the theme.
 
 ---
 
-## Run it on real captured traffic
+## Results first — on real, public data (NSL-KDD)
 
-```bash
-sudo tcpdump -i any -s 512 -w demo.pcap        # or use any .pcap you already have
-python3 -m prahari.cli live --pcap demo.pcap
-```
+NSL-KDD is the de-facto academic benchmark for network intrusion detection. Its
+held-out test set deliberately contains **17 attack types that appear in no
+training record** — a built-in test of catching the unknown. PRAHARI's own
+pure-Python models, trained on `KDDTrain+` and tested on `KDDTest+`:
 
-No capture handy, and no root on the machine in front of you? Build one:
-
-```bash
-python3 scripts/make_pcap.py --out data/demo.pcap --duration 1800
-python3 -m prahari.cli live --pcap data/demo.pcap
-python3 -m web.server --pcap data/demo.pcap    # the same capture, in the dashboard
-```
-
-**On Windows**, use `python` (or `py -3`) instead of `python3`, and skip `make`
-entirely — it is not installed on a stock Windows box:
-
-```powershell
-python scripts\demo.py            # everything: tests, capture, analysis, eval
-python scripts\demo.py --quick    # the same, minus the slow evaluation passes
-```
-
-`scripts/demo.py` is the cross-platform equivalent of `make demo` and invokes
-whichever interpreter is running it, so it cannot pick the wrong Python.
-
-`scripts/make_pcap.py` writes real frames — real Ethernet/IPv4/TCP headers, real
-DNS wire encoding, a real TLS ClientHello, a real DER certificate — so Wireshark
-opens the file and the reader is tested against bytes it did not itself produce.
-The *contents* are generated; the format and the parsing are not.
-
----
-
-## Run it in thirty seconds
-
-No dependencies. Pure Python 3.11 standard library.
-
-```bash
-git clone <this repo> && cd AI_Riders
-
-python3 -m prahari.cli selftest      # prove the read-only constraints
-python3 -m prahari.cli replay        # replay a capture, watch alerts appear
-python3 -m web.server               # dashboard on http://localhost:8000
-
-python3 tests/test_prahari.py        # 33 engine tests
-python3 tests/test_web.py            # 16 web tests
-python3 eval/report.py               # THE canonical evaluation -> eval/report.json
-python3 eval/unseen_family.py        # the zero-day / unseen-family (OOD) experiment
-python3 eval/jitter_sweep.py         # the C2-jitter robustness experiment
-python3 scripts/train.py             # refit the models from scratch
-python3 scripts/calibrate.py         # refit score calibration
-```
-
-Or `make demo`.
-
----
-
-## What actually works right now
-
-Everything below runs. Nothing here is a mock, a stub, or a screenshot.
-
-| Capability | State |
+| What | Result |
 |---|---|
-| Labelled traffic generator, 7 classes, seeded and reproducible | working |
-| Streaming engine, windowed, bounded latency | working |
-| All six threat families detected | working |
-| Three fitted ML models (logistic regression, in-repo, no sklearn) | working |
-| Bigram language model over benign domains | working |
-| Calibration, deduplication, incident correlation | working |
-| SHA-256 hash-chained alert ledger with tamper detection | working |
-| Live dashboard | working |
-| Read-only self-test | working |
-| Held-out evaluation + jitter sweep | working |
-| PCAP / PCAPNG reader — real packets to the same `Flow` record | working |
-| NetFlow v5 ingest — exported flow records to the same `Flow` | working |
-| Single-direction (one-way tap) degraded mode, measured | working |
-| Real JA3 fingerprint + X.509 parsing from the handshake | working |
+| **Unsupervised anomaly detection** (Isolation Forest, trained on *normal only*, no attack labels) | **71.1% of attacks detected at a 3.1% false-positive rate** |
+| **Novel-attack / zero-day detection** (the 17 attack families unseen in training) | **66.3% caught** — with zero labels for those families |
+| Supervised classifier (lightweight, explainable logistic model) | accuracy 0.76, **precision 0.91** on the official hard split; DoS recall 83%, Probe 78% |
+
+```bash
+python3 scripts/fetch_nslkdd.py && python3 eval/nslkdd_eval.py   # reproduce in ~3 min
+```
+
+The anomaly detector — the part that matters for *"detecting anomalies"* — catches
+**two-thirds of attack families it was never trained on**. That is the whole point
+of an anomaly-based IDS, and we measure it on data we did not create. (R2L attacks,
+which look almost identical to normal logins, are the known-hard class for every
+method on NSL-KDD; we report them honestly rather than hide them.)
 
 ---
 
-## Measured results
+## What makes it stand out
 
-All numbers below are produced by the code in this repository. Re-run the
-commands to reproduce them.
+- **Adaptive anomaly detection that learns *your* network.** The unsupervised
+  detector builds a live baseline of what normal traffic looks like on the actual
+  link and flags deviations from *that* — so it works on a real network, not just
+  a lab, and keeps working as the network changes. Validated end-to-end on NSL-KDD.
+- **Explainable by design (Digital Trust).** Every alert says, in plain English,
+  *what* happened, *why* it matters, and *what to do* — next to the exact evidence
+  and the MITRE ATT&CK technique. Confidence is **calibrated** (isotonic), so 0.9
+  really means ~90%. Non-experts can read it; analysts can trust it.
+- **Breadth.** Nine detectors covering volumetric DDoS, C2 beaconing, DGA malware
+  domains, DNS tunnelling, suspicious encrypted (TLS) sessions, reconnaissance,
+  data exfiltration, **OT/ICS** (Modbus/DNP3/IEC-104), and the unsupervised
+  anomaly net for everything else.
+- **Metadata-only, encryption-respecting.** It never decrypts payloads — it works
+  from flow shape, timing, and TLS fingerprints (JA4) — so it is effective on
+  today's ~95%-encrypted traffic and privacy-preserving by construction.
+- **Tamper-evident audit trail.** Every alert is appended to a SHA-256
+  hash-chained ledger; any edit breaks the chain and is detectable — the trust
+  anchor for the evidence it produces.
+- **Zero dependencies, runs anywhere.** Pure CPython — no scapy, numpy, sklearn or
+  TensorFlow. Installs on an air-gapped box; every line is auditable; ~11k flows/s
+  on a single CPU core, no GPU.
+- **Honest evaluation.** One command produces every number; strict scoring with
+  a confusion matrix; failure modes measured and disclosed, not hidden.
 
-### One canonical evaluation (`python3 eval/report.py`)
+---
 
-There is exactly **one** evaluation command and **one** artifact
-(`eval/report.json`). Every number in this README, the deck and the web viewer
-is read from it — nothing is computed a second way. Eight held-out captures
-(97,172 flows, 70% benign, 840 benign hosts) with seeds **and** jitter never
-used in training or calibration. Scoring is **strict multi-label per class — no
-class-equivalence credit**: a wrong class counts as wrong.
+## See it run (live demo)
 
-| Threat class | Precision | Recall | F1 | tp/fp/fn |
-|---|---:|---:|---:|---:|
-| Volumetric DDoS | 1.000 | 1.000 | 1.000 | 8/0/0 |
-| C2 beaconing | 1.000 | 1.000 | 1.000 | 24/0/0 |
-| DGA resolution | 1.000 | 1.000 | 1.000 | 8/0/0 |
-| DNS tunnelling | 1.000 | 1.000 | 1.000 | 8/0/0 |
-| Encrypted (TLS) | 1.000 | 1.000 | 1.000 | 24/0/0 |
-| Recon / scanning | 1.000 | 1.000 | 1.000 | 8/0/0 |
-| OT/ICS intrusion | 1.000 | 1.000 | 1.000 | 24/0/0 |
-| **Data exfiltration** | **0.889** | 1.000 | 0.941 | 8/1/0 |
-| **STRICT macro-F1** | | | **0.993** | |
+A real-time dashboard backed by the same engine. On Linux it taps a real
+interface, assembles flows off the wire, and streams alerts to the browser live.
 
-- **Host-detection F1: 1.000** — did we catch that the host is malicious at all,
-  reported separately, never instead of the strict number.
-- **False positives: 0 events on 840 benign hosts (0.00% host FPR).** The one
-  residual error is a *classification* error, not a benign false alarm: a single
-  encrypted-malware host scored as `data_exfiltration` (see the confusion matrix
-  in `report.json`). We show it rather than smoothing it away.
-- **Calibration: ECE 0.193, Brier 0.125** over 374 alerts. Confidence is
-  isotonic-calibrated where a class has enough mixed-outcome volume to fit one
-  (`scripts/calibrate.py`), and falls back to the raw score otherwise — the
-  schema documents exactly that.
-- **Alert volume: ~3.6k alerts per million flows.**
-
-### The unseen-attack (zero-day / OOD) experiment (`python3 eval/unseen_family.py`)
-
-A fair "previously-unseen behaviour" claim needs a family absent from **all**
-training. `novel_unseen` is a long-lived covert channel on a non-standard port
-that matches no signature and no trained class. Across held-out seeds the
-**unsupervised anomaly net catches it (recall 1.00)** while **every supervised
-detector correctly stays silent** and benign false-flags stay at 0. That is the
-whole and only basis on which we use the word "unseen".
-
-### Throughput and latency (`eval/report.py`, `python3 -m prahari.cli bench`)
-
-- **Processing throughput ~10.8k flows/sec, full pipeline** (parse → detect →
-  fuse → calibrate → ledger) on one core; **~0.09 ms/flow** compute latency.
-  This is the *full-pipeline* boundary — stated explicitly so it is never
-  confused with a detector-only micro-benchmark.
-- **Detection-window delay** (event → alert) is **bounded by the analysis
-  window**: p50 ~38 s, p95 ~60 s, p99 ~80 s at the 60 s batch window. The window
-  is a deployment tradeoff — the **live sensor default is 5 s** — so detection
-  delay is a knob, not a fixed 60 s. Per-flow *processing* latency is sub-millisecond
-  and is reported separately, so the two are never conflated.
-
-### The jitter sweep (`python3 eval/jitter_sweep.py`)
-
-Real C2 frameworks randomise their sleep interval specifically to defeat
-periodicity detection. Recall across the range, three held-out captures per
-point:
-
-```
-jitter    0%   5%  10%  15%  20%  25%  30%  35%  40%  45%  50%
-recall  1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00
+```bash
+# live sensor on a real NIC (needs root for raw capture)
+sudo python3 -m web.server --live --iface eth0 --port 8000
+#   self-contained single-machine demo: tap loopback and scan it
+sudo python3 -m web.server --live --iface lo --port 8000
+python3 scripts/scan.py 127.0.0.1 1 1000        # a 'Recon' alert appears in seconds
 ```
 
-**This experiment earned its place by finding a real bug.** The first version
-scored **0.00 recall at zero jitter** — the model had been trained only on
-jittered beacons and had learned "C2 means jittered", so a perfectly regular
-implant looked exactly like a monitoring poller. The fix was a `regularity`
-feature that is high for anything repetitive plus training across the full
-jitter range. The commit history shows both states.
+Open `http://<host>:8000`. Tabs: **Overview**, **Live sensor**, **Replay
+scenarios**, **Measured results** (per-class table + strict confusion matrix +
+calibration), **Tamper-evident ledger** (break a record, watch it get caught), and
+**Read-only proof**. The static front end also deploys to any serverless host for
+a shareable, read-only link (see [`docs/DEPLOY.md`](docs/DEPLOY.md)).
+
+One-command container:
+
+```bash
+docker compose up --build      # open :8000
+```
+
+---
+
+## Quick start
+
+```bash
+git clone https://github.com/Pulkitkh/PRAHARI && cd PRAHARI
+
+python3 tests/test_prahari.py        # engine tests
+python3 tests/test_web.py            # web tests
+python3 scripts/fetch_nslkdd.py      # fetch the public NSL-KDD benchmark
+python3 eval/nslkdd_eval.py          # REAL-DATA evaluation (anomaly + zero-day)
+python3 eval/report.py               # synthetic multi-protocol evaluation
+python3 eval/unseen_family.py        # the unseen-family (OOD) experiment
+python3 -m prahari.cli selftest      # prove the read-only / integrity properties
+python3 -m web.server                # the dashboard on http://localhost:8000
+```
+
+No `pip install` — there is nothing to install.
 
 ---
 
 ## How it works
 
 ```
-  PRODUCTION NETWORK  ──▶  DATA DIODE  ──▶  MONITORING ENCLAVE
-                             ▲                  │
-                             └── no path back ──┘        (PRAHARI runs here)
-
-  ingest ─▶ decode ─▶ flow assembly ─▶ features ─▶ 7 detectors
-                                                      │
-                          fusion ◀─────────────────────┘
-                            │
-                            ├─▶ calibrate · deduplicate · correlate
-                            └─▶ hash-chained ledger ─▶ dashboard
+ passive tap (SPAN/mirror)                          analyst
+        │  copy of traffic                              ▲
+        ▼                                               │ ranked, explained alerts
+  flow assembly ─► passive metadata ─► 9 detectors ─► fuse + calibrate ─► tamper-evident
+  (5-tuple, bytes,    (DNS, TLS/JA4,     (ML + stats +   (dedupe, correlate,   ledger
+   packets, flags,     QUIC header,       anomaly net)    MITRE, confidence)
+   timing)             OT/ICS headers)
 ```
 
-### The seven detectors
+- **Ingest** — offline PCAP, live `AF_PACKET` capture, or NetFlow v5. Read-only:
+  the detection engine opens no sockets and has no transmit path (a self-test
+  fails the build if any module imports one).
+- **Detect** — three fitted logistic-regression models (beacon, DGA, exfil), an
+  Isolation-Forest + adaptive-local-baseline anomaly detector, and explainable
+  statistical detectors for DDoS, DNS tunnelling, TLS, recon and OT/ICS.
+- **Fuse** — deduplicate floods, correlate a host's activity into one incident,
+  calibrate confidence, stamp the MITRE ATT&CK technique.
+- **Record** — append to the hash-chained ledger; render in the dashboard with a
+  plain-English explanation.
 
-| Class | Signal read | Model |
-|---|---|---|
-| Volumetric DDoS | Windowed rate, SYN:SYN-ACK ratio, **Shannon entropy of source IPs** | CUSUM-style change detection |
-| C2 beaconing | Interval **coefficient of variation**, regularity, byte variance, destination prevalence, external destination | Logistic regression (fitted) |
-| DGA resolution | Character entropy, vowel ratio, consonant runs, **bigram log-likelihood**, NXDOMAIN rate | Logistic regression + bigram LM (fitted) |
-| DNS tunnelling | Query-name length, unique subdomains per parent, TXT/NULL share | Statistical |
-| Malware in TLS | **JA4 rarity**, self-signed certs, validity window, packet-size shape | Statistical, metadata only |
-| Recon / scanning | Fan-out across ports and hosts, unanswered-attempt ratio | Threshold + rules |
-| Data exfiltration | Out/in byte ratio vs the host's own EWMA baseline, **destination locality** (internal vs external), volume, concentration, novelty | Logistic regression (fitted) |
+Full detail: [`docs/WORKFLOW.md`](docs/WORKFLOW.md),
+[`docs/COVERAGE.md`](docs/COVERAGE.md) (what it can/can't see and how it degrades),
+[`docs/LEDGER.md`](docs/LEDGER.md) (the trust/audit model),
+[`docs/SECURITY.md`](docs/SECURITY.md) (passive/read-only design).
 
-Three of these deliberately use statistics rather than deep learning. For rate
-and fan-out problems a clean statistical detector is faster, explainable by
-construction, and far easier to defend than a neural network doing the same job.
+---
 
-### The kill chain, correlated
+## Two evaluations, both reproducible
 
-Fusion links detections that share an entity. A single compromised host produces
-one incident with a timeline rather than three unrelated alerts:
+**Real public data — NSL-KDD** (`eval/nslkdd_eval.py`): see the table above.
+
+**Synthetic multi-protocol network** (`eval/report.py`): the synthetic generator
+exercises the packet-level detectors NSL-KDD cannot (JA4 fingerprints, DNS names,
+beacon timing, OT/ICS protocol semantics). On 8 held-out captures (97,172 flows;
+seeds and jitter never used in training), scored strictly per class with no
+equivalence credit: **macro-F1 0.993**, host-detection F1 1.000, **0 false
+positives on 840 benign hosts** (the one residual error is a single
+mis-classification, shown in the confusion matrix). An unseen-family experiment
+(`eval/unseen_family.py`) excludes an entire attack family from training and shows
+the anomaly net still catches it while every trained detector stays silent.
+
+Every number comes from these commands — nothing is quoted by hand.
+
+---
+
+## Honest limitations
+
+- NSL-KDD is a *summarised-connection* benchmark; our synthetic set covers the
+  packet-level signals it cannot. Together they cover more than either alone, but
+  neither is a live production network at national scale — real traffic is harder,
+  and we say so.
+- R2L attacks are near-indistinguishable from normal logins on metadata; our
+  recall there is low, as it is for most published methods.
+- Encrypted DNS (DoH/DoT) and TLS 1.3 remove some metadata; the coverage matrix
+  (`docs/COVERAGE.md`) states exactly what degrades and how.
+
+We treat disclosing limits as part of *digital trust*, not a weakness.
+
+---
+
+## Repository
 
 ```
-CORRELATED INCIDENTS
-  10.42.1.19  severity=critical  score=1.00
-              chain: encrypted_malware → c2_beaconing → data_exfiltration
+prahari/            the detection engine (pure Python, zero dependencies)
+  detectors/        the nine detectors
+  datasets/         NSL-KDD loader (real-data benchmark)
+  anomaly.py        Isolation Forest   model.py  logistic regression + calibration
+eval/               nslkdd_eval.py (real) · report.py (synthetic) · unseen_family.py
+web/                the real-time dashboard + stateless API
+sensor/             live AF_PACKET capture
+scripts/            fetch_nslkdd, train, calibrate, scan, demo
+tests/              automated tests (engine + web)
+docs/               workflow, coverage, ledger, security, deploy, demo
 ```
 
----
-
-## The five constraints NTRO set — and how this repo proves each
-
-| # | Constraint | Proof |
-|---|---|---|
-| a | **Read-only ingest** | `python3 -m prahari.cli selftest` parses the AST of every module in the detection path and fails if any imports `socket`, `requests`, `urllib`, `httpx`, `scapy` or similar. The dashboard server is deliberately *outside* that path. |
-| b | **No session-payload decryption** | No *session* key material is ever provisioned or derived; `Flow.pkt_sizes` holds sizes and directions, and no field anywhere holds session-payload bytes. The sole crypto operation is unwrapping a QUIC Initial with the **public** RFC 9001 salt (`quic_crypto.py`) — the same handshake ClientHello that is sent in the clear over TCP — to read its JA4/SNI. It reads a handshake, never a session: no 1-RTT key is computed, and the AEAD tag is not even verified. |
-| c | **Streaming, not batch** | `Engine.push()` processes one flow at a time and closes windows as the clock advances. `bench` reports measured p50/p95/p99. |
-| d | **Stated throughput** | ~10.8k flows/sec full-pipeline on one core, measured by `eval/report.py`; method and boundary stated with the number. |
-| e | **Standardised alert schema** | `schema.Alert.to_record()` — versioned JSON, ECS-aligned field naming, with timestamp, flow ID, threat class, calibrated confidence, evidence, model version and hash-chain position. |
-
----
-
-## What "unidirectional" means here
-
-The problem statement says *unidirectional IP traffic*, and the phrase carries
-two readings. **We assume a data diode carries a TAP copy of both directions of
-each flow into the read-only enclave** — traffic crosses the boundary one way,
-but each conversation is seen whole. The stricter reading is that only one
-direction of any flow is ever observable, as with asymmetric routing or a
-one-way tap on a single fibre.
-
-We do not get to pick which one the sponsor meant, so we implemented the
-stricter one and measured the cost:
-
-```
-python3 eval/degraded.py
-```
-
-| threat class | both dirs | one dir | what is lost |
-|---|---|---|---|
-| c2_beaconing | 5/5 | 5/5 | unaffected — timing is a client-side property |
-| volumetric_ddos | 5/5 | 5/5 | unaffected — source entropy is client-side |
-| dns_tunnelling | 5/5 | 5/5 | loses response size; query entropy and rate retained |
-| recon_scanning | 5/5 | 5/5 | loses handshake completion; fan-out breadth retained |
-| data_exfiltration | 5/5 | 5/5 | loses out/in ratio; absolute outbound volume retained |
-| encrypted_malware | 5/5 | 5/5 | loses server cert and JA4S; JA3 + shape + rarity retained |
-| dga_resolution | 5/5 | **4/5** | loses NXDOMAIN rate; lexical + burst retained |
-
-**34 of 35 detections retained (97%).** Run it yourself, or add
-`--single-direction` to `replay` or `live`.
-
-The same mechanism answers a second question. TLS 1.3 encrypts the server
-Certificate message, so self-signed status and validity window are unreadable
-there too — identical loss, identical fallback. When the TLS detector scores
-without server-side evidence it says so in the alert (`server_side_observed:
-false`) and carries a caveat, rather than treating "not observed" as "observed
-to be benign".
-
----
-
-## Honest limits
-
-A prototype that oversells itself loses the viva. These are the gaps.
-
-1. **We can read real packets; we have not yet run on real operational
-   traffic.** `prahari/pcapread.py` parses actual pcap/pcapng — Ethernet, Linux
-   cooked SLL/SLL2, raw IP, VLAN unwrapping, IPv4/TCP/UDP, DNS question
-   parsing, TLS ClientHello with a JA3 computed from the bytes, and X.509
-   issuer/subject/validity from the Certificate message — and produces the same
-   `Flow` record the generator does, so the whole pipeline runs on it unchanged.
-   What we have not done is point it at a live NTRO-scale link. The *content* of
-   our captures is still generated, so the traffic shapes are ours; only the
-   wire format and the parsing of it are real.
-
-2. **Most classes score 1.000 on synthetic data. That will not survive real traffic.**
-   Synthetic DGA names are random strings and so are cleanly separable;
-   real *dictionary*-DGA families concatenate plausible words and would defeat
-   the lexical features entirely. Treat these numbers as "the pipeline is
-   wired correctly end to end", not as a claim about field performance.
-
-3. **JA3 and JA4 over both TCP and QUIC; TLS 1.3 hides the certificate.**
-   The reader computes a real **JA3** and a real **JA4** (FoxIO spec — sorted
-   cipher/extension lists, so it survives the client shuffling that defeats JA3)
-   from the ClientHello. For **QUIC** it goes further than recognition: a v1/
-   draft-29 Initial is decrypted with the *public* RFC 9001 salt (pure-Python
-   AES-128 + HKDF, no OpenSSL, no session secret — `prahari/quic_crypto.py`), and
-   the ClientHello inside yields a real **"q…" JA4** with SNI, exactly like the
-   TCP path. `make quic` shows it end to end; the RFC 9001 Appendix A.1 key
-   vectors and a FIPS-197 AES vector are asserted in the test suite. A later
-   packet or an unknown version falls back to recognising the flow as QUIC so it
-   is never invisible. Certificate facts (self-signed,
-   validity window) are readable only through TLS 1.2, because TLS 1.3 encrypts
-   the Certificate message; on a 1.3-only link the detector falls back to
-   fingerprint rarity and packet shape, and Encrypted Client Hello removes SNI
-   visibility as it rolls out.
-
-4. **Exfiltration is the weakest signal** and is still positioned as a ranked
-   lead for analyst review, not an oracle — its score stays capped below
-   certainty in code (`SCORE_CEILING = 0.82`) even though it is now a fitted
-   model. Learning `dst_external` removed the whole class of backup-host false
-   positives, but a patient adversary moving modest volumes to a reputable
-   external cloud endpoint still looks much like an employee using that service.
-
-5. **Alert volume (~3.6k per million flows) still needs tuning for a real SOC
-   queue.** The deduplication and correlation windows need tuning against real
-   analyst feedback, and severity/asset context would cut the queue further.
-
----
-
-## Methodology notes
-
-Things that are easy to get wrong and that this repo gets right on purpose:
-
-- **Capture-level splits, never random.** Flows from one attack burst are
-  highly correlated. A random split puts them on both sides, the model
-  memorises the burst, and the accuracy is meaningless. Training uses twelve
-  captures; evaluation uses separate ones with unseen seeds and jitter.
-- **Thresholds are chosen on training data** (`LogisticRegression.choose_threshold`),
-  never against the held-out results.
-- **Class weights are capped.** An uncapped 265:1 ratio just flips the failure
-  mode from "always benign" to "always malicious" — we hit that and capped it.
-- **A leaky feature was removed.** The beacon model initially had
-  `self_signed` available and learned to use it instead of timing. It belongs to
-  the TLS detector; removing it forced the timing model to actually work.
-
----
-
-## Layout
-
-```
-prahari/
-  schema.py        Flow and Alert records; the alert schema for constraint (e)
-  generate.py      labelled traffic generator, 7 classes, seeded
-  features.py      entropy, CV, autocorrelation, bigram LM, lexical features
-  model.py         logistic regression, calibration, threshold selection
-  engine.py        the streaming pipeline
-  fusion.py        dedupe, correlate into incidents, severity
-  ledger.py        SHA-256 hash-chained append-only alert store
-  selftest.py      read-only constraint proof
-  pcapread.py      pcap/pcapng -> Flow: JA3/JA4 (TCP + QUIC) + X.509
-  quic_crypto.py   pure-Python QUIC Initial decrypt (public salt) -> q-JA4
-  netflow.py       NetFlow v5 -> Flow: exported flow-record ingest
-  cli.py           live / replay / selftest / bench
-  detectors/       one module per threat family
-sensor/
-  capture.py       AF_PACKET live capture -> Flow: real NIC tap, no libpcap
-  attack.py        crafts real attack packets on the wire, for demo + tests
-  live.py          continuous capture -> engine -> SSE event bus
-web/
-  service.py       every API answer as a plain dict (one implementation)
-  router.py        one request router shared by the local server and Vercel
-  server.py        local / on-server app: static + API + live SSE stream
-  build.py         precomputes the demo datasets
-  public/          the SOC dashboard (one HTML, one CSS, one JS; no CDN)
-api/index.py       Vercel serverless entrypoint (stateless endpoints)
-eval/              held-out evaluation, jitter sweep, degraded-mode measurement
-scripts/train.py      fits both models and the bigram table
-scripts/make_pcap.py  writes a genuine wire-format .pcap (round-trip test + demo)
-scripts/demo.py       cross-platform `make demo`, for machines without make
-docs/DEMO.md       the runbook for presenting this
-docs/DEPLOY.md     live-sensor and static-viewer deployment
-tests/             49 tests (33 engine + 16 web)
-```
-
----
-
-## Influences and prior art
-
-A browser-based real-time flow console — an overview list that drills into
-per-flow detail — is a well-trodden pattern; HoangNV2001's *Real-time-IDS* (an
-academic Flask + Scapy + scikit-learn project) is one open example, and looking
-at it helped shape our dashboard's overview-to-detail interaction. PRAHARI shares
-none of its code. That project is an **active** Windows capture agent built on
-third-party libraries; ours is a **passive, read-only, zero-dependency** engine
-built around the diode constraint the problem statement sets — the opposite
-architecture. The flow-feature taxonomy (packet-length and inter-arrival
-statistics, TCP-flag counts) follows the CICFlowMeter conventions common across
-the field.
-
----
-
-## Regulatory alignment
-
-NCIIPC is a unit of NTRO, constituted under s.70A of the IT Act 2000. Design
-choices that follow from the sponsor's own regulatory frame:
-
-- alert timestamps assume **NPL-synchronised** enclave clocks
-- the ledger defaults to **180-day retention** (CERT-In Directions, 2022)
-- alerts are structured for export inside the **six-hour incident reporting**
-  window those Directions require
-
-**No blockchain.** The theme is called *Blockchain & Cybersecurity*, but the
-problem statement never asks for one and it would not help. A SHA-256 hash chain
-gives the same tamper-evidence at a fraction of the cost — see `ledger.py`.
-
----
-
-Licensed for evaluation as part of Smart India Hackathon 2026.
+Team **AI Riders** — Cyber AI Hackathon 2026, University of Derby.

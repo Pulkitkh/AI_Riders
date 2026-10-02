@@ -1,0 +1,59 @@
+{
+  "dataset": {
+    "name": "NSL-KDD",
+    "train": 125973,
+    "test": 22544,
+    "novel_attack_types": [
+      "apache2",
+      "httptunnel",
+      "mailbomb",
+      "mscan",
+      "named",
+      "processtable",
+      "ps",
+      "saint",
+      "sendmail",
+      "snmpgetattack",
+      "snmpguess",
+      "sqlattack",
+      "udpstorm",
+      "worm",
+      "xlock",
+      "xsnoop",
+      "xterm"
+    ]
+  },
+  "supervised": {
+    "accuracy": 0.7564,
+    "precision": 0.9122,
+    "recall": 0.633,
+    "f1": 0.7474,
+    "fpr": 0.0805,
+    "tp": 8123,
+    "fp": 782,
+    "tn": 8929,
+    "fn": 4710,
+    "recall_by_category": {
+      "dos": 0.826,
+      "probe": 0.7774,
+      "r2l": 0.0191,
+      "u2r": 0.3582
+    }
+  },
+  "anomaly": {
+    "accuracy": 0.8221,
+    "precision": 0.9679,
+    "recall": 0.7111,
+    "f1": 0.8199,
+    "fpr": 0.0312,
+    "tp": 9126,
+    "fp": 303,
+    "tn": 9408,
+    "fn": 3707
+  },
+  "novel_attack_detection": {
+    "rate": 0.6632,
+    "caught": 2487,
+    "total": 3750
+  }
+}

@@ -1,4 +1,4 @@
-"""Passive parsers for the industrial protocols NTRO and NCIIPC actually guard.
+"""Passive parsers for the industrial protocols critical infrastructure runs on.
 
 A network IDS that only understands DNS and TLS is blind on the plant floor.
 The OT world speaks Modbus, DNP3 and IEC 60870-5-104, and an intrusion there —

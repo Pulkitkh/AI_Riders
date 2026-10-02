@@ -74,10 +74,10 @@
         <span class="hero-badge"><svg class="ico ico-lg"><use href="#i-shield-check"/></svg></span>
         <div>
           <h2 class="hero-title">A guard that watches your network — and never talks back.</h2>
-          <p class="hero-sub">PRAHARI sits behind a one-way gate and reads a copy of your
-            network traffic. It spots seven kinds of cyber-attack in real time using their
-            behaviour, without ever decrypting a message or sending anything back into the
-            network — so it can never become the way in.</p>
+          <p class="hero-sub">PRAHARI reads a copy of your network traffic from a passive
+            tap and uses AI to spot cyber-attacks — and anomalies it has never seen before —
+            in real time, from their behaviour. It never decrypts a message and never sends
+            anything back into the network, so it can never become the way in.</p>
           <div class="hero-cta">
             <button class="btn" data-goto="live"><svg class="ico"><use href="#i-play"/></svg>See it live</button>
             <button class="btn ghost" data-goto="replay"><svg class="ico"><use href="#i-replay"/></svg>Try a scenario</button>
@@ -85,9 +85,9 @@
         </div>
       </div>
       <div class="flow" aria-label="How data flows: network to one-way gate to PRAHARI, nothing returns">
-        <div class="flow-node"><svg class="ico ico-lg"><use href="#i-activity"/></svg><b>Your network</b><span>power, banking, telecom</span></div>
+        <div class="flow-node"><svg class="ico ico-lg"><use href="#i-activity"/></svg><b>Your network</b><span>any IP network</span></div>
         <div class="flow-link"><svg class="ico"><use href="#i-arrow"/></svg><em>copy only</em></div>
-        <div class="flow-node"><svg class="ico ico-lg"><use href="#i-diode"/></svg><b>One-way gate</b><span>data diode</span></div>
+        <div class="flow-node"><svg class="ico ico-lg"><use href="#i-diode"/></svg><b>Passive tap</b><span>SPAN / mirror port</span></div>
         <div class="flow-link"><svg class="ico"><use href="#i-arrow"/></svg><em>read-only</em></div>
         <div class="flow-node accent"><svg class="ico ico-lg"><use href="#i-shield"/></svg><b>PRAHARI</b><span>watches &amp; alerts</span></div>
         <div class="flow-link muted"><svg class="ico"><use href="#i-x"/></svg><em>nothing back</em></div>
@@ -96,7 +96,7 @@
 
     <div class="stack2" style="margin-top:var(--s4)">
       <div class="card">
-        <h2><svg class="ico"><use href="#i-alert"/></svg>The seven threats it catches</h2>
+        <h2><svg class="ico"><use href="#i-alert"/></svg>The threats it catches</h2>
         <div class="body"><div id="threat-legend" class="threat-grid"></div></div>
       </div>
       <div class="card">
@@ -249,10 +249,11 @@
   <!-- ===================== DEGRADED ===================== -->
   <section id="tab-degraded" class="tabpane" role="tabpanel" tabindex="0" aria-label="degraded" hidden>
     <div class="card"><div class="body">
-      <p style="margin-top:0"><b>What "unidirectional" means here.</b> We assume the diode carries a TAP copy of
-        <b>both</b> directions of each flow. The stricter reading — only one direction ever visible — breaks
-        SYN/SYN-ACK completion, the out/in byte ratio, NXDOMAIN rate and every server-side TLS field. Rather than
-        argue about it, we discard the reverse direction before the engine and measure what survives.</p>
+      <p style="margin-top:0"><b>Degrading gracefully when visibility is partial.</b> A passive tap normally sees
+        <b>both</b> directions of each flow. But sometimes only one direction is visible (asymmetric routing, a
+        single-direction tap) — which breaks SYN/SYN-ACK completion, the out/in byte ratio, NXDOMAIN rate and every
+        server-side TLS field. Rather than fail silently, we discard the reverse direction before the engine and
+        measure exactly what still survives — the detector degrades honestly instead of going blind.</p>
       <div class="stats" id="degraded-stats" style="margin:12px 0"></div>
       <div class="tablewrap">
         <table>
@@ -298,9 +299,10 @@
   <!-- ===================== LEDGER ===================== -->
   <section id="tab-ledger" class="tabpane" role="tabpanel" tabindex="0" aria-label="ledger" hidden>
     <div class="card"><div class="body">
-      <p style="margin-top:0">Every alert is appended to a <b>SHA-256 hash-chained</b> log. It is not a blockchain — it is
-        tamper-<i>evident</i>: change one byte of one past alert and re-walking the chain names the record that broke.
-        This is what the CERT-In 180-day retention duty actually needs.</p>
+      <p style="margin-top:0">Every alert is appended to a <b>SHA-256 hash-chained</b> log — the <i>digital-trust</i> anchor for the
+        evidence PRAHARI produces. It is not a blockchain; it is tamper-<i>evident</i>: change one byte of one past
+        alert and re-walking the chain names the record that broke. Trustworthy evidence an analyst (or an auditor)
+        can rely on.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">
         <button class="btn ghost" id="verify-clean">Build &amp; verify a clean chain</button>
         <button class="btn danger" id="verify-tamper">Tamper with one record, then verify</button>

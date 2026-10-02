@@ -1,6 +1,6 @@
 # PRAHARI — demo runbook
 
-For SIH26145, NTRO: *AI-Based Detection of Cyber Threats in Unidirectional IP Traffic*.
+Cyber AI Hackathon 2026, University of Derby: *detecting anomalies in network traffic using an IDS*.
 
 Read this once the night before. On the day, you will have somewhere between
 **four and eight minutes** of a judge's attention, and they will have seen a

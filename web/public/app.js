@@ -554,7 +554,7 @@ async function verifyLedger(tamper) {
       <dt>records</dt><dd>${d.records}</dd>
       <dt>verified</dt><dd>${ok ? '<span class="pass">'+svg("i-check","ico-sm")+'yes</span>' : '<span class="fail">'+svg("i-x","ico-sm")+'broken</span>'}</dd>
       <dt>head hash</dt><dd>${esc((d.head_hash || "").slice(0, 32))}…</dd>
-      <dt>retention</dt><dd>${d.retention_days} days (CERT-In)</dd>
+      <dt>retention</dt><dd>${d.retention_days} days</dd>
     </dl><p class="note">${esc(d.note)}</p>`;
 }
 

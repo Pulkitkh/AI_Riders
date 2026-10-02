@@ -435,6 +435,24 @@ def test_alerts_carry_mitre_attack_technique():
         assert "mitre_technique" in a.evidence and "mitre_tactic" in a.evidence
 
 
+def test_nslkdd_loader_parses_and_maps():
+    """The NSL-KDD loader parses a record, maps attack names to the standard
+    five categories, and produces fixed-length vectors for the anomaly net."""
+    from prahari.datasets import nslkdd
+    normal = ("0,tcp,ftp_data,SF,491,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2,0.00,"
+              "0.00,0.00,0.00,1.00,0.00,0.00,150,25,0.17,0.03,0.17,0.00,0.00,0.00,"
+              "0.05,0.00,normal,20").split(",")
+    r = nslkdd.Record(normal)
+    assert r.label == 0 and nslkdd.category(r.attack) == "normal"
+    assert len(r.to_vec()) == nslkdd.feature_dim()
+    assert "protocol_type=tcp" in r.to_dict()
+    attack = normal[:41] + ["neptune", "19"]
+    a = nslkdd.Record(attack)
+    assert a.label == 1 and nslkdd.category("neptune") == "dos"
+    assert nslkdd.category("portsweep") == "probe" and nslkdd.category("rootkit") == "u2r"
+    assert len(a.to_vec()) == len(r.to_vec())        # fixed length regardless of class
+
+
 def test_read_only_selftest_passes():
     from prahari.selftest import check_no_network_imports
     ok, offenders = check_no_network_imports()

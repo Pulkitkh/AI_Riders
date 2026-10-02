@@ -1,11 +1,11 @@
 # PRAHARI — System Workflow
 
-**SIH 2026 · PS ID SIH26145 · NTRO · Team AI Riders**
-AI-Based Detection of Cyber Threats in Unidirectional (read-only) IP Traffic.
+**Cyber AI Hackathon 2026 · University of Derby · Team AI Riders**
+AI-based detection of anomalies and cyber threats in network traffic (IDS).
 
-PRAHARI observes a *copy* of production-side traffic through a one-way boundary and
-raises ranked, explainable threat alerts without ever being able to transmit back
-into the protected network. This document traces one packet from the wire to a
+PRAHARI observes a *copy* of network traffic from a passive tap and raises ranked,
+explainable threat alerts without ever being able to transmit back into the
+monitored network. This document traces one packet from the wire to a
 ledgered alert.
 
 ---

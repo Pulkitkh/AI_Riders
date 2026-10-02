@@ -1,4 +1,4 @@
-# Deploying PRAHARI for the SIH demo
+# Deploying PRAHARI for the demo
 
 There are two deployments, because live packet capture and serverless hosting
 are mutually exclusive and pretending otherwise would be dishonest. Pick the one
