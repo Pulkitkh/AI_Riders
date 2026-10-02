@@ -1,0 +1,79 @@
+{
+  "dataset": {
+    "name": "UNSW-NB15",
+    "year": 2015,
+    "train": 175341,
+    "test": 82332,
+    "families": [
+      "Fuzzers",
+      "Analysis",
+      "Backdoor",
+      "DoS",
+      "Exploits",
+      "Generic",
+      "Reconnaissance",
+      "Shellcode",
+      "Worms"
+    ]
+  },
+  "supervised": {
+    "accuracy": 0.8071,
+    "precision": 0.7479,
+    "recall": 0.9801,
+    "f1": 0.8484,
+    "fpr": 0.4048,
+    "tp": 44431,
+    "fp": 14978,
+    "tn": 22022,
+    "fn": 901,
+    "recall_by_family": {
+      "Fuzzers": 0.9065,
+      "Analysis": 0.9173,
+      "Backdoor": 0.9949,
+      "DoS": 0.9873,
+      "Exploits": 0.9819,
+      "Generic": 0.9991,
+      "Reconnaissance": 0.9994,
+      "Shellcode": 0.9947,
+      "Worms": 1.0
+    }
+  },
+  "anomaly": {
+    "accuracy": 0.5508,
+    "precision": 0.7651,
+    "recall": 0.2658,
+    "f1": 0.3946,
+    "fpr": 0.1,
+    "tp": 12051,
+    "fp": 3700,
+    "tn": 33300,
+    "fn": 33281,
+    "zero_shot_recall_by_family": {
+      "Reconnaissance": 0.0169,
+      "Backdoor": 0.0892,
+      "DoS": 0.0966,
+      "Exploits": 0.043,
+      "Analysis": 0.0547,
+      "Fuzzers": 0.0602,
+      "Worms": 0.1136,
+      "Shellcode": 0.0,
+      "Generic": 0.5648
+    }
+  },
+  "deep_autoencoder": {
+    "accuracy": 0.5871,
+    "precision": 0.8025,
+    "recall": 0.3317,
+    "f1": 0.4694,
+    "fpr": 0.1001,
+    "tp": 15038,
+    "fp": 3702,
+    "tn": 33298,
+    "fn": 30294
+  },
+  "matched_comparison": {
+    "target_fpr": 0.1,
+    "isolation_forest_recall": 0.2658,
+    "autoencoder_recall": 0.3317
+  }
+}
