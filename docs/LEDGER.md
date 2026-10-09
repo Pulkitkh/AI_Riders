@@ -9,18 +9,20 @@ chain and is detectable. We are precise about what that does and does not mean.
 | Property | Status | Note |
 |---|---|---|
 | Tamper-**evident** | **Yes** | Any modification of a past record is detectable by re-verifying the chain (`prahari.cli selftest`, or the dashboard's verify tab). |
-| Tamper-**proof** / immutable | **No** | An insider with write access to the file can recompute the whole chain. Local hash chaining alone is not immutability. |
-| Regulatory-certified | **No** | We say "tamper-evident hash-chained audit trail", never "CERT-In-grade". |
-| Trusted timestamp / external anchor | **Planned** | Periodically anchoring the chain head to a WORM store or a trusted timestamp service (RFC 3161) gives chain-of-custody against a compromised host. This is future work and labelled as such. |
-| Per-device signing | **Planned** | Signing each record with a per-appliance key (hardware/software trust anchor) attributes evidence to a specific sensor. |
+| Tamper-**proof** without the key | **Yes, when keyed** | Set `PRAHARI_LEDGER_KEY` (or `PRAHARI_LEDGER_KEYFILE`) and each link is an HMAC-SHA256, not a bare hash. An insider who rewrites the whole file cannot forge a chain that verifies without the secret. Unkeyed, the chain is tamper-evident only (an attacker can recompute it). Each record records its `algo`, so old SHA-256 files keep verifying after a key is introduced. |
+| Fail-closed on resume | **Yes** | Re-opening a ledger verifies the chain *before* trusting its tail; a broken chain raises `LedgerTampered` instead of silently resuming from a forged record. |
+| Crash durability | **Yes** | Every append is `flush()` + `os.fsync()`, so an acknowledged alert survives power loss. |
+| Regulatory-certified | **No** | We say "tamper-evident/-proof hash-chained audit trail", never "CERT-In-grade". |
+| Trusted timestamp / external anchor | **Hook present** | `AlertLedger.head()` returns `{seq, sha256, algo}`; publishing it periodically to a WORM store or RFC-3161 timestamp service anchors the chain so even a full local rewrite is detectable. The hook is implemented; the external sink is a deployment choice. |
 
 ## Threat model for the ledger
 
 - **Read/observe attacker**: cannot alter records without detection (chain).
-- **Local-write attacker (compromised sensor)**: can rewrite the *local* chain
-  undetectably — which is exactly why chain-of-custody requires the planned
-  external head-anchoring and per-device signing above. We do not claim the
-  local chain defends against this today.
+- **Local-write attacker (compromised sensor)**: *unkeyed*, can rewrite the
+  local chain undetectably; *keyed* (HMAC), cannot forge a verifying chain
+  without the secret, and once a head is anchored externally even a full rewrite
+  is detectable. The fail-closed resume means a tampered file is rejected at
+  startup rather than quietly continued.
 - **Evidence-availability**: the ledger is attached to the LIVE engine by
   default (`PRAHARI_LEDGER`), so operational alerts are chained as produced —
   not only in the separate tamper *demo*.
@@ -52,4 +54,6 @@ number to watch is alerts/day, not flows/day, which is why alert-volume tuning
   broken link if any (the tamper demo deliberately downgrades one record to show
   the break being caught).
 - Model artifacts have their own integrity manifest (`scripts/sign_models.py`,
-  checked by the self-test) so a swapped model is caught the same way.
+  HMAC-signed when `PRAHARI_MODEL_KEY` is set) and the engine **enforces** it at
+  startup — a swapped or unsigned-under-key model makes the engine refuse to
+  start (fail closed), not merely report a failed check.

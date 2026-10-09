@@ -14,10 +14,15 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from . import service
+from .ratelimit import limiter
 
 MAX_UPLOAD = 4 * 1024 * 1024        # Vercel caps request bodies at ~4.5 MB
 
 JSON = "application/json; charset=utf-8"
+
+# Routes that spin up the full engine — rate-limited and concurrency-capped so a
+# public demo cannot be knocked over by a flood of heavy requests.
+EXPENSIVE = frozenset({"/analyze", "/pcap", "/degraded"})
 
 # Security posture (all opt-in; safe defaults):
 #   PRAHARI_DEBUG       — include exception tracebacks in error responses (dev only)
@@ -52,7 +57,7 @@ def _q(query: str) -> dict[str, str]:
 
 
 def dispatch(method: str, path: str, query: str = "",
-             body: bytes = b"") -> tuple[int, dict[str, str], bytes]:
+             body: bytes = b"", client: str = "") -> tuple[int, dict[str, str], bytes]:
     """Return (status, headers, body). Never raises — a 500 is still a response."""
     path = "/" + path.strip("/")
     for prefix in ("/api/index", "/api"):
@@ -60,6 +65,21 @@ def dispatch(method: str, path: str, query: str = "",
             path = path[len(prefix):] or "/"
             break
     q = _q(query)
+
+    # Admission control for the heavy routes, before any engine work is done.
+    gated = method != "OPTIONS" and path in EXPENSIVE
+    retry_after = 0
+    if gated:
+        ok, rl_status, retry_after = limiter.acquire(client)
+        if not ok:
+            payload = {"error": "rate limited" if rl_status == 429 else "server busy",
+                       "retry_after": retry_after}
+            raw = json.dumps(payload).encode("utf-8")
+            return rl_status, {
+                "Content-Type": JSON, "Content-Length": str(len(raw)),
+                "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+                "Retry-After": str(retry_after),
+            }, raw
 
     try:
         payload, status = _route(method, path, q, body)
@@ -71,6 +91,9 @@ def dispatch(method: str, path: str, query: str = "",
             payload = {"error": type(exc).__name__, "message": str(exc),
                        "trace": traceback.format_exc()[-1200:]}
         status = 500
+    finally:
+        if gated:
+            limiter.release()
 
     raw = json.dumps(payload, allow_nan=False).encode("utf-8")
     headers = {

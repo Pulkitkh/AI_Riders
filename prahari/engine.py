@@ -13,6 +13,7 @@ triggering traffic being observed and the alert being raised.
 """
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -69,6 +70,12 @@ class Engine:
                  ledger: AlertLedger | None = None,
                  detectors: list[Detector] | None = None,
                  on_alert=None):
+        # Runtime integrity gate: a tampered model can blind a detector without
+        # changing any code, so verify the model artifacts against their signed
+        # manifest before this engine processes a single flow. No-op when no
+        # manifest is present (fresh checkout) or when explicitly skipped for dev.
+        from .selftest import enforce_model_integrity
+        enforce_model_integrity()
         self.window = window
         self.detectors = detectors if detectors is not None else all_detectors()
         self.fusion = Fusion()
@@ -76,6 +83,13 @@ class Engine:
         self.on_alert = on_alert
         self.stats = EngineStats()
         self._window_end: float | None = None
+        # The live sensor drives the engine from two threads at once: the capture
+        # thread calls push() as flows complete, while a heartbeat thread calls
+        # advance() on a timer to close idle windows. Both mutate detector state,
+        # fusion state, stats and the ledger, so they must not interleave. An
+        # RLock (not a plain Lock) because run() → push() could otherwise be
+        # re-entered, and because it keeps a future same-thread nested call safe.
+        self._lock = threading.RLock()
 
     # -- streaming ------------------------------------------------------------
     def _close_window(self, window_end: float) -> list[Alert]:
@@ -98,27 +112,28 @@ class Engine:
 
     def push(self, flow: Flow) -> list[Alert]:
         """Feed one flow. Returns any alerts this flow's arrival caused."""
-        emitted: list[Alert] = []
-        if self._window_end is None:
-            self._window_end = flow.ts + self.window
-            self.stats.wall_start = time.perf_counter()
-        # Close windows up to this flow's arrival. If the stream jumps forward
-        # by a long idle gap (or we are replaying several captures back to back)
-        # there is no value in grinding through thousands of empty windows —
-        # close one, then realign. Without this the engine spends its time
-        # evaluating nothing and both throughput and p95 latency look terrible.
-        if flow.ts - self._window_end > self.MAX_CATCHUP * self.window:
-            emitted += self._close_window(self._window_end)
-            self._window_end = flow.ts + self.window
-        else:
-            while flow.ts >= self._window_end:
+        with self._lock:
+            emitted: list[Alert] = []
+            if self._window_end is None:
+                self._window_end = flow.ts + self.window
+                self.stats.wall_start = time.perf_counter()
+            # Close windows up to this flow's arrival. If the stream jumps forward
+            # by a long idle gap (or we are replaying several captures back to back)
+            # there is no value in grinding through thousands of empty windows —
+            # close one, then realign. Without this the engine spends its time
+            # evaluating nothing and both throughput and p95 latency look terrible.
+            if flow.ts - self._window_end > self.MAX_CATCHUP * self.window:
                 emitted += self._close_window(self._window_end)
-                self._window_end += self.window
-        for det in self.detectors:
-            det.observe(flow)
-        self.stats.flows += 1
-        self.stats.wall_end = time.perf_counter()
-        return emitted
+                self._window_end = flow.ts + self.window
+            else:
+                while flow.ts >= self._window_end:
+                    emitted += self._close_window(self._window_end)
+                    self._window_end += self.window
+            for det in self.detectors:
+                det.observe(flow)
+            self.stats.flows += 1
+            self.stats.wall_end = time.perf_counter()
+            return emitted
 
     def advance(self, now: float) -> list[Alert]:
         """Close every window that has ended by wall-clock ``now``.
@@ -130,17 +145,18 @@ class Engine:
         this on a timer; replay never needs it because the next flow always
         advances the clock.
         """
-        emitted: list[Alert] = []
-        if self._window_end is None:
-            return emitted
-        if now - self._window_end > self.MAX_CATCHUP * self.window:
-            emitted += self._close_window(self._window_end)
-            self._window_end = now + self.window
-        else:
-            while now >= self._window_end:
+        with self._lock:
+            emitted: list[Alert] = []
+            if self._window_end is None:
+                return emitted
+            if now - self._window_end > self.MAX_CATCHUP * self.window:
                 emitted += self._close_window(self._window_end)
-                self._window_end += self.window
-        return emitted
+                self._window_end = now + self.window
+            else:
+                while now >= self._window_end:
+                    emitted += self._close_window(self._window_end)
+                    self._window_end += self.window
+            return emitted
 
     def run(self, flows, progress=None) -> list[Alert]:
         """Replay a whole capture. Flows must be time-ordered."""
@@ -149,7 +165,8 @@ class Engine:
             out += self.push(f)
             if progress and i % 2000 == 0:
                 progress(i)
-        if self._window_end is not None:
-            out += self._close_window(self._window_end)
-        self.stats.wall_end = time.perf_counter()
+        with self._lock:
+            if self._window_end is not None:
+                out += self._close_window(self._window_end)
+            self.stats.wall_end = time.perf_counter()
         return out

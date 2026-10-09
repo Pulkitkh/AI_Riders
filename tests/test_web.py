@@ -163,6 +163,45 @@ def test_service_degraded_measures_retention():
     assert len(d["rows"]) == 8
 
 
+def test_rate_limiter_admits_burst_then_blocks_per_client():
+    from web.ratelimit import RateLimiter
+    rl = RateLimiter(rate=0.001, burst=3, max_concurrency=10)
+    for _ in range(3):
+        ok, _, _ = rl.acquire("1.2.3.4")
+        assert ok
+        rl.release()
+    ok, status, retry = rl.acquire("1.2.3.4")        # bucket now empty
+    assert not ok and status == 429 and retry >= 1
+    ok2, _, _ = rl.acquire("5.6.7.8")                # other client unaffected
+    assert ok2
+
+
+def test_rate_limiter_concurrency_cap_returns_503():
+    from web.ratelimit import RateLimiter
+    rl = RateLimiter(rate=100, burst=100, max_concurrency=2)
+    assert rl.acquire("x")[0] and rl.acquire("x")[0]  # 2 in flight
+    ok, status, _ = rl.acquire("x")
+    assert not ok and status == 503                   # third rejected, not queued
+    rl.release()
+    assert rl.acquire("x")[0]                          # slot freed → admitted
+
+
+def test_expensive_route_is_rate_limited_end_to_end():
+    import web.router as router
+    from web.ratelimit import RateLimiter
+    saved = router.limiter
+    router.limiter = RateLimiter(rate=0.001, burst=1, max_concurrency=5)
+    try:
+        s1, _ = _json("GET", "/api/analyze", "scenario=recon_scan")
+        assert s1 == 200                               # first spends the one token
+        s2, d2 = _json("GET", "/api/analyze", "scenario=recon_scan")
+        assert s2 == 429 and d2["retry_after"] >= 1    # second is throttled
+        s3, d3 = _json("GET", "/api/health")           # cheap route never gated
+        assert s3 == 200
+    finally:
+        router.limiter = saved
+
+
 if __name__ == "__main__":
     fns = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

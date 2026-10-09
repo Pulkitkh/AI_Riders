@@ -270,11 +270,13 @@ def selftest() -> dict:
     interrogate is worth nothing.
     """
     from prahari.selftest import (DETECTION_PATH, FORBIDDEN, _imports,
-                                  check_no_network_imports, check_no_open_sockets)
+                                  check_model_integrity, check_no_network_imports,
+                                  check_no_open_sockets)
     from prahari.selftest import PKG
 
     ok_imports, offenders = check_no_network_imports()
     ok_sockets, n_sockets = check_no_open_sockets()
+    ok_models, bad_models = check_model_integrity()
 
     # The import scan is the meaningful gate: it proves no module in the
     # detection path CAN open a socket. The live socket count is only
@@ -303,6 +305,15 @@ def selftest() -> dict:
         if in_server else
         f"{n_sockets} socket object(s) live in this interpreter")
 
+    if ok_models is None:
+        model_detail = ("no MANIFEST.json present — run scripts/sign_models.py to "
+                        "record model hashes (enforced at engine startup once set)")
+    elif ok_models:
+        model_detail = ("every model artifact matches its signed integrity "
+                        "manifest; the engine refuses to start otherwise")
+    else:
+        model_detail = "; ".join(bad_models)
+
     return {
         "checks": [
             {"name": "detection path imports no network client",
@@ -312,10 +323,14 @@ def selftest() -> dict:
             {"name": "detection path holds no capture/transmit socket",
              "passed": True, "informational": in_server,
              "detail": socket_detail},
+            {"name": "model artifacts match signed integrity manifest",
+             "passed": ok_models is not False,
+             "informational": ok_models is None,
+             "detail": model_detail},
         ],
         "modules": modules,
         "forbidden": sorted(FORBIDDEN),
-        "passed": ok_imports,
+        "passed": ok_imports and ok_models is not False,
         "socket_count": n_sockets,
         "in_server_process": in_server,
         "note": ("The read-only property is enforced by the import scan: no "
@@ -403,8 +418,13 @@ def verify_ledger(tamper: bool = False, n: int = 40) -> dict:
                                                separators=(",", ":"))
             path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-        ok, count, bad = AlertLedger(path).verify()
-        head = hashlib.sha256(lines[-1].encode()).hexdigest() if lines else ""
+        # Re-walk the (possibly tampered) file directly. We must NOT reconstruct
+        # an AlertLedger here: a tampered chain now fails closed at construction,
+        # which is correct for a real resume but would crash this demo whose whole
+        # point is to SHOW the rejection. verify_chain is the side-effect-free path.
+        from prahari.ledger import verify_chain
+        ok, count, bad = verify_chain(path)
+        head = ledger.head()["sha256"]
 
     return {
         "records": total,

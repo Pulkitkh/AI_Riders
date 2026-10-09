@@ -208,7 +208,8 @@ class Handler(BaseHTTPRequestHandler):
     # -- stateless API (shared with Vercel) --------------------------------
     def _api(self, body: bytes = b"") -> None:
         path, _, query = self.path.partition("?")
-        self._send(*dispatch(self.command, path, query, body))
+        client = self.client_address[0] if self.client_address else ""
+        self._send(*dispatch(self.command, path, query, body, client))
 
     # -- static ------------------------------------------------------------
     def _static(self) -> None:

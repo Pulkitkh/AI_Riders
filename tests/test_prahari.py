@@ -11,7 +11,7 @@ from prahari.engine import Engine
 from prahari.features import (coefficient_of_variation, is_rfc1918, jitter_band,
                               lexical_features, regularity, shannon_entropy)
 from prahari.generate import ALL_ATTACKS, TrafficGenerator
-from prahari.ledger import AlertLedger
+from prahari.ledger import AlertLedger, LedgerTampered
 from prahari.schema import Flow
 
 
@@ -68,8 +68,37 @@ def test_hash_chain_detects_tampering():
     lines = (d / "a.jsonl").read_text(encoding="utf-8").splitlines()
     lines[2] = lines[2].replace('"recon_scanning"', '"benign"')
     (d / "a.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    ok2, _, bad2 = AlertLedger(d / "a.jsonl").verify()
-    assert not ok2 and bad2 is not None
+    # Re-opening a tampered ledger must FAIL CLOSED: it verifies the chain before
+    # trusting the tail, so a forged record is detected at load, not silently
+    # resumed from. The exception names the first bad record.
+    try:
+        AlertLedger(d / "a.jsonl")
+        assert False, "tampered ledger loaded without raising"
+    except LedgerTampered as exc:
+        assert "a2" in str(exc)
+
+
+def test_hmac_keyed_ledger_is_tamper_proof():
+    # With a key, the chain is HMAC-keyed: a verifier WITHOUT the key cannot
+    # re-forge it even by rewriting the whole file + recomputing hashes.
+    d = Path(tempfile.mkdtemp())
+    key = b"a-very-secret-ledger-key"
+    led = AlertLedger(d / "k.jsonl", key=key)
+    for i in range(4):
+        led.append({"alert_id": f"k{i}", "threat": {"class": "recon_scanning"}})
+    assert led.algo == "hmac-sha256"
+    ok, n, _ = led.verify()
+    assert ok and n == 4
+    head = led.head()
+    assert head["algo"] == "hmac-sha256" and head["seq"] == 4
+    # Same file, correct key → still resumes and verifies.
+    AlertLedger(d / "k.jsonl", key=key)
+    # Same file, WRONG key → every record fails to authenticate, fails closed.
+    try:
+        AlertLedger(d / "k.jsonl", key=b"wrong-key")
+        assert False, "keyed ledger loaded under the wrong key"
+    except LedgerTampered:
+        pass
 
 
 # --- end to end --------------------------------------------------------------
@@ -714,6 +743,72 @@ def test_benign_scale_shifts_volume_without_breaking_labels():
     mean_b = sum(f.bytes_out for f in fb) / len(fb)
     mean_g = sum(f.bytes_out for f in fg) / len(fg)
     assert mean_g > mean_b * 2      # 3x scale clearly shifts the benign distribution
+
+
+def test_engine_is_threadsafe_under_concurrent_push_and_advance():
+    # The live sensor drives push() (capture thread) and advance() (heartbeat
+    # thread) at once. Both mutate detector/fusion/stats/ledger state, so without
+    # a lock they interleave and corrupt counters or crash. Hammer both from many
+    # threads and assert the engine stays internally consistent.
+    import threading
+    flows = TrafficGenerator(seed=99, jitter=0.2).capture(600, classes=ALL_ATTACKS)
+    eng = Engine(window=60.0)
+    errors: list[Exception] = []
+
+    def feeder(chunk):
+        try:
+            for f in chunk:
+                eng.push(f)
+        except Exception as e:                       # noqa: BLE001
+            errors.append(e)
+
+    def ticker():
+        try:
+            for _ in range(200):
+                eng.advance(flows[-1].ts)
+        except Exception as e:                        # noqa: BLE001
+            errors.append(e)
+
+    k = 4
+    chunks = [flows[i::k] for i in range(k)]
+    threads = [threading.Thread(target=feeder, args=(c,)) for c in chunks]
+    threads.append(threading.Thread(target=ticker))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors, f"concurrent access raised: {errors[:3]}"
+    # Every flow pushed is accounted for exactly once — no lost update.
+    assert eng.stats.flows == len(flows)
+
+
+def test_capture_linktype_derived_from_hardware_type():
+    from sensor.capture import linktype_for_hatype
+    assert linktype_for_hatype(1) == 1        # ARPHRD_ETHER  → Ethernet
+    assert linktype_for_hatype(772) == 1      # ARPHRD_LOOPBACK → Ethernet-framed
+    assert linktype_for_hatype(0xFFFE) == 101  # ARPHRD_NONE → raw IP, no L2 header
+    assert linktype_for_hatype(519) == 101    # ARPHRD_RAWIP → raw IP
+    assert linktype_for_hatype(123456) == 1   # unknown NIC → default Ethernet
+
+
+def test_model_integrity_enforced_and_signature_roundtrips():
+    import hashlib
+    import hmac
+    from prahari.selftest import (canonical_manifest_bytes, check_model_integrity,
+                                  enforce_model_integrity)
+    # The committed manifest is unsigned → file-hash check must pass, and the
+    # hard runtime gate must not raise on a clean checkout.
+    ok, problems = check_model_integrity()
+    assert ok is not False, problems
+    enforce_model_integrity()                 # no exception = gate open
+    # Signature helper is self-consistent: canonical bytes exclude the signature,
+    # so signing then verifying with the same key matches.
+    m = {"algorithm": "sha256", "files": {"a.json": {"sha256": "x", "bytes": 1}}}
+    key = b"model-signing-key"
+    sig = hmac.new(key, canonical_manifest_bytes(m), hashlib.sha256).hexdigest()
+    m["signature"] = {"algo": "hmac-sha256", "value": sig}
+    assert hmac.compare_digest(
+        hmac.new(key, canonical_manifest_bytes(m), hashlib.sha256).hexdigest(), sig)
 
 
 if __name__ == "__main__":

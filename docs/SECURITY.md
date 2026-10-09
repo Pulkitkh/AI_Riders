@@ -44,6 +44,9 @@ appliance:
 | Dashboard control endpoints | localhost, or `PRAHARI_API_TOKEN` | Authenticated + RBAC, audited |
 | CORS | same-origin (no wildcard); `PRAHARI_CORS_ORIGIN` to allowlist | same-origin only |
 | Errors | generic; tracebacks only under `PRAHARI_DEBUG` | generic only |
+| Analysis endpoints (`/analyze`, `/pcap`, `/degraded`) | per-client token bucket + global concurrency cap (`PRAHARI_RL_RATE`/`_BURST`/`PRAHARI_MAX_CONCURRENCY`) → 429/503 | + edge WAF / upstream rate limit |
+| Audit ledger | hash chain; HMAC-keyed + fail-closed resume + `fsync` when `PRAHARI_LEDGER_KEY` set | HMAC key in HSM, head anchored to WORM |
+| Model integrity | SHA-256 manifest, HMAC-signed when `PRAHARI_MODEL_KEY` set; **enforced at engine startup** (fail closed) | signed bundles verified before activation, rollback |
 | Container | `cap_drop: ALL` + `NET_RAW`, `no-new-privileges`, read-only rootfs | + egress firewall, single capture NIC, seccomp |
 | Model/software updates | JSON artifacts loaded directly | signed bundles, signature verified before activation, rollback |
 
@@ -52,11 +55,15 @@ appliance:
 - **Attacker on the production side** — cannot reach the sensor except by the
   one-way copy (layers 1–2). This is the primary design goal.
 - **Attacker who compromises the monitoring enclave** — layers 1–2 still prevent
-  a return path to the protected side. Evidence integrity, however, is only
-  *tamper-evident* locally (the hash chain): an insider with write access can
-  rewrite the whole chain, so chain-of-custody requires signing and external
-  head-anchoring (WORM / trusted timestamp) — described as future work, not
-  claimed as present. See `docs/LEDGER.md`.
+  a return path to the protected side. Evidence integrity: the hash chain is
+  *tamper-evident* by default, and *tamper-proof* against anyone without the key
+  when an HMAC key is configured (`PRAHARI_LEDGER_KEY` / `PRAHARI_LEDGER_KEYFILE`)
+  — an insider who rewrites the whole file then cannot forge a chain that
+  verifies. Re-opening a ledger now verifies the chain **before** trusting its
+  tail and fails closed on a break; every append is `fsync`-ed for crash
+  durability; and `AlertLedger.head()` exposes the chain head for periodic
+  external anchoring (WORM / trusted timestamp), which closes the full-rewrite
+  gap. See `docs/LEDGER.md`.
 - **Supply chain** — zero third-party Python runtime packages narrows the attack
   surface; the trade is that our own parsers must be fuzzed and maintained (we
   run parser fuzzing in the test suite).
@@ -64,7 +71,8 @@ appliance:
 ## What the self-test proves, precisely
 
 `python3 -m prahari.cli selftest` proves: (a) no module in the detection path
-imports a network-client/transmit facility; (b) the alert hash chain verifies.
+imports a network-client/transmit facility; (b) the alert hash chain verifies;
+(c) every model artifact matches its (optionally HMAC-signed) integrity manifest.
 It does **not** prove physical directionality or OS-level egress denial — those
 are layers 1–2 and are demonstrated with `ip route`/`iptables` and a physical
 send-back test on jury day, not by the AST scan.

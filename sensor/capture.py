@@ -29,6 +29,31 @@ from prahari.schema import Flow
 ETH_P_ALL = 0x0003
 TCP_FIN, TCP_SYN, TCP_RST, TCP_ACK = 0x01, 0x02, 0x04, 0x10
 
+# ARPHRD hardware types (from recvfrom's sockaddr_ll) → pcap link type. An
+# AF_PACKET SOCK_RAW socket delivers each frame with that interface's real
+# link-layer header, which differs per interface — the loopback and the wire
+# are not the same framing, and on the `any` pseudo-interface frames from both
+# arrive interleaved. So the only correct link type is the one derived from the
+# per-frame hardware type, not a single value fixed at bind time.
+ARPHRD_ETHER, ARPHRD_LOOPBACK = 1, 772
+ARPHRD_NONE, ARPHRD_PPP, ARPHRD_RAWIP = 0xFFFE, 512, 519
+ARPHRD_SIT, ARPHRD_TUNNEL, ARPHRD_TUNNEL6, ARPHRD_IPGRE = 776, 768, 769, 778
+# Ethernet-framed devices carry a 14-byte Ethernet header → DLT_EN10MB (1).
+_ETHERNET_HATYPES = frozenset({ARPHRD_ETHER, ARPHRD_LOOPBACK})
+# Header-less / point-to-point devices hand us the IP packet directly → DLT_RAW.
+_RAWIP_HATYPES = frozenset({ARPHRD_NONE, ARPHRD_PPP, ARPHRD_RAWIP,
+                            ARPHRD_SIT, ARPHRD_TUNNEL, ARPHRD_TUNNEL6, ARPHRD_IPGRE})
+LINKTYPE_RAW = 101
+
+
+def linktype_for_hatype(hatype: int) -> int:
+    """Map an ARPHRD hardware type to the pcap link type for its frames."""
+    if hatype in _RAWIP_HATYPES:
+        return LINKTYPE_RAW
+    # Ethernet is the overwhelmingly common case; default unknown NICs to it
+    # rather than silently dropping every frame from an interface we don't list.
+    return 1
+
 # A live tap needs wall-clock expiry, not the file reader's simulated clock.
 IDLE_TIMEOUT = 5.0            # a flow idle this long is complete and flushed
 ACTIVE_TIMEOUT = 120.0        # a long-lived flow is flushed and continued
@@ -264,9 +289,11 @@ class LiveCapture:
                 break
             now = time.time()
             if pkt:
-                # sa = (ifname, ethertype, pkttype, hatype, addr)
-                linktype = 113 if (self.iface in ("any", None)) else 1
-                asm.push(now, linktype, pkt)
+                # sa = (ifname, ethertype, pkttype, hatype, addr); hatype is the
+                # ARPHRD hardware type of the interface the frame arrived on, so
+                # mixed framing on `any` is handled per frame, not guessed.
+                hatype = sa[3] if len(sa) > 3 else ARPHRD_ETHER
+                asm.push(now, linktype_for_hatype(hatype), pkt)
             if now - last_sweep >= SWEEP_EVERY:
                 done = asm.expire(now)
                 if done:

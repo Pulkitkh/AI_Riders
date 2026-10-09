@@ -19,7 +19,11 @@ class handler(BaseHTTPRequestHandler):
 
     def _run(self, body: bytes = b"") -> None:
         path, _, query = self.path.partition("?")
-        status, headers, raw = dispatch(self.command, path, query, body)
+        # Behind Vercel's proxy the real client is in X-Forwarded-For; fall back
+        # to the socket peer when running the handler directly.
+        fwd = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        client = fwd or (self.client_address[0] if self.client_address else "")
+        status, headers, raw = dispatch(self.command, path, query, body, client)
         self.send_response(status)
         for k, v in headers.items():
             self.send_header(k, v)
